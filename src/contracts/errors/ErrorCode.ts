@@ -1,0 +1,13 @@
+export type BlackoutErrorCode =
+  | "VALIDATION"
+  | "NOT_FOUND"
+  | "UNAVAILABLE"
+  | "TIMEOUT"
+  | "CONFLICT"
+  | "TRANSPORT"
+  | "STORAGE"
+  | "PERMISSION"
+  | "UNSUPPORTED"
+  | "SECURITY"
+  | "CANCELLED"
+  | "NOT_IMPLEMENTED";

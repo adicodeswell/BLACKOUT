@@ -1,13 +1,16 @@
-/**
- * @format
- */
-
 import React from 'react';
-import ReactTestRenderer from 'react-test-renderer';
 import App from '../App';
+import renderer from 'react-test-renderer';
 
-test('renders correctly', async () => {
-  await ReactTestRenderer.act(() => {
-    ReactTestRenderer.create(<App />);
-  });
+// Mock the native module so the test doesn't crash in Node.js
+jest.mock('react-native', () => {
+  const RN = jest.requireActual('react-native');
+  RN.NativeModules.BlackoutNativeModule = {
+    pingNative: jest.fn().mockResolvedValue({ status: "OK", native: true })
+  };
+  return RN;
+});
+
+it('renders correctly', () => {
+  renderer.create(<App />);
 });
