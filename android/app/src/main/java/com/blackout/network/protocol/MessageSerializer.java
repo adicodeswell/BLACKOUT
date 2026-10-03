@@ -23,7 +23,13 @@ public class MessageSerializer {
         json.put("hop_count", message.getHopCount());
         json.put("priority", message.getPriority());
         json.put("payload_hash", message.getPayloadHash());
-        json.put("payload", message.getPayload());
+        try {
+            // Try to nest it cleanly as a JSON Object so it matches the TypeScript `unknown` object contract
+            json.put("payload", new JSONObject(message.getPayload()));
+        } catch (JSONException e) {
+            // Fallback to raw string if it's not a JSON object
+            json.put("payload", message.getPayload());
+        }
         
         if (message.getSignature() != null) {
             json.put("signature", message.getSignature());
@@ -46,7 +52,7 @@ public class MessageSerializer {
                 .hopCount(json.getInt("hop_count"))
                 .priority(json.getString("priority"))
                 .payloadHash(json.getString("payload_hash"))
-                .payload(json.getString("payload"));
+                .payload(json.get("payload").toString());
 
         if (json.has("destination_device_id")) {
             builder.destinationDeviceId(json.getString("destination_device_id"));

@@ -20,7 +20,7 @@ public class MessageSerializerTest {
                 .hopCount(0)
                 .priority("HIGH")
                 .payloadHash("abcdef123456")
-                .payload("{\"emergency\": \"fire\"}")
+                .payload("{\"emergency\":\"fire\"}")
                 .build();
 
         // 2. Serialize to bytes
