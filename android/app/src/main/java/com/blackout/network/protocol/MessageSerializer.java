@@ -31,6 +31,14 @@ public class MessageSerializer {
             json.put("payload", message.getPayload());
         }
         
+        if (message.getEncryption() != null) {
+            JSONObject encJson = new JSONObject();
+            encJson.put("algorithm", message.getEncryption().getAlgorithm());
+            encJson.put("key_id", message.getEncryption().getKeyId());
+            encJson.put("nonce", message.getEncryption().getNonce());
+            json.put("encryption", encJson);
+        }
+
         if (message.getSignature() != null) {
             json.put("signature", message.getSignature());
         }
@@ -56,6 +64,16 @@ public class MessageSerializer {
 
         if (json.has("destination_device_id")) {
             builder.destinationDeviceId(json.getString("destination_device_id"));
+        }
+        
+        if (json.has("encryption")) {
+            JSONObject encJson = json.getJSONObject("encryption");
+            NetworkMessage.EncryptionMetadata enc = new NetworkMessage.EncryptionMetadata(
+                encJson.getString("algorithm"),
+                encJson.getString("key_id"),
+                encJson.getString("nonce")
+            );
+            builder.encryption(enc);
         }
         
         if (json.has("signature")) {

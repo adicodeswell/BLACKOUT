@@ -18,6 +18,12 @@ export type MessagePriority =
   | "NORMAL"
   | "LOW";
 
+export interface MessageEncryption {
+  algorithm: "AES_GCM";
+  key_id: string;
+  nonce: string;
+}
+
 export interface MessageDto {
   protocol_version: number;
   message_id: string;
@@ -30,6 +36,7 @@ export interface MessageDto {
   priority: MessagePriority;
   payload_hash: string;
   payload: unknown;
+  encryption?: MessageEncryption;
   signature: string;
 }
 

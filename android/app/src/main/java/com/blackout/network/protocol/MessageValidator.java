@@ -48,5 +48,18 @@ public class MessageValidator {
         if (message.getPayload() == null) {
             throw new ValidationException("Payload is required (can be empty string, but not null)");
         }
+
+        // --- DIRECT message specific validation ---
+        if (message.getMessageType() == MessageType.DIRECT) {
+            if (message.getDestinationDeviceId() == null || message.getDestinationDeviceId().trim().isEmpty()) {
+                throw new ValidationException("DIRECT message must have a destination_device_id");
+            }
+            if (message.getEncryption() == null) {
+                throw new ValidationException("DIRECT message must include encryption metadata");
+            }
+            if (message.getEncryption().getAlgorithm() == null || message.getEncryption().getAlgorithm().trim().isEmpty()) {
+                throw new ValidationException("Encryption algorithm is required for DIRECT messages");
+            }
+        }
     }
 }

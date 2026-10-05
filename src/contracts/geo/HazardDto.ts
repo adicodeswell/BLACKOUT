@@ -4,7 +4,7 @@ export interface HazardDto {
   hazard_id: string;
   type: string;
   geometry: unknown;
-  severity: Severity;
+  severity: Severity; 
   source_incident_id?: string;
   status: "ACTIVE" | "RESOLVED" | "EXPIRED";
   created_at: number;

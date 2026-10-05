@@ -1,6 +1,23 @@
 package com.blackout.network.protocol;
 
 public class NetworkMessage {
+
+    public static class EncryptionMetadata {
+        private final String algorithm;
+        private final String keyId;
+        private final String nonce;
+
+        public EncryptionMetadata(String algorithm, String keyId, String nonce) {
+            this.algorithm = algorithm;
+            this.keyId = keyId;
+            this.nonce = nonce;
+        }
+
+        public String getAlgorithm() { return algorithm; }
+        public String getKeyId() { return keyId; }
+        public String getNonce() { return nonce; }
+    }
+
     private final int protocolVersion;
     private final String messageId;
     private final String originDeviceId;
@@ -12,6 +29,7 @@ public class NetworkMessage {
     private final String priority; // e.g. "HIGH", "NORMAL"
     private final String payloadHash;
     private final String payload; // Serialized JSON payload string
+    private final EncryptionMetadata encryption;
     private final String signature;
 
     // Builder pattern for immutability
@@ -27,6 +45,7 @@ public class NetworkMessage {
         private String priority = "NORMAL";
         private String payloadHash;
         private String payload;
+        private EncryptionMetadata encryption = null;
         private String signature;
 
         public Builder() {}
@@ -42,6 +61,7 @@ public class NetworkMessage {
         public Builder priority(String val) { this.priority = val; return this; }
         public Builder payloadHash(String val) { this.payloadHash = val; return this; }
         public Builder payload(String val) { this.payload = val; return this; }
+        public Builder encryption(EncryptionMetadata val) { this.encryption = val; return this; }
         public Builder signature(String val) { this.signature = val; return this; }
 
         public NetworkMessage build() {
@@ -61,6 +81,7 @@ public class NetworkMessage {
         this.priority = builder.priority;
         this.payloadHash = builder.payloadHash;
         this.payload = builder.payload;
+        this.encryption = builder.encryption;
         this.signature = builder.signature;
     }
 
@@ -76,5 +97,6 @@ public class NetworkMessage {
     public String getPriority() { return priority; }
     public String getPayloadHash() { return payloadHash; }
     public String getPayload() { return payload; }
+    public EncryptionMetadata getEncryption() { return encryption; }
     public String getSignature() { return signature; }
 }
