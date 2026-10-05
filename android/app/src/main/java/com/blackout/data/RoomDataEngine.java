@@ -6,6 +6,7 @@ import androidx.room.Room;
 import com.blackout.data.repository.MessageRepository;
 import com.blackout.network.protocol.NetworkMessage;
 import com.blackout.network.protocol.MessageType;
+import com.blackout.data.migrations.DatabaseMigrations;
 
 /**
  * Pure-Java DATA engine facade.
@@ -21,7 +22,10 @@ public class RoomDataEngine {
                 context.getApplicationContext(),
                 BlackoutDatabase.class,
                 "blackout_database"
-        ).build();
+        )
+        .addMigrations(DatabaseMigrations.ALL_MIGRATIONS)
+        // Explicitly NOT calling fallbackToDestructiveMigration() to enforce data preservation
+        .build();
         
         this.messageRepository = new MessageRepository(database.networkMessageDao());
     }

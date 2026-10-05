@@ -22,7 +22,7 @@ import com.blackout.data.entity.ResourceEntity;
         EvidenceEntity.class,
         ResourceEntity.class
     },
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters({RoomConverters.class})

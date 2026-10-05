@@ -31,4 +31,5 @@ public class NetworkMessageEntity {
     public String deliveryState; // "CREATED", "QUEUED", "SENT", "DELIVERED"
     public int deliveryAttempts;
     public long deliveredAt;
+    public boolean isRead;
 }
