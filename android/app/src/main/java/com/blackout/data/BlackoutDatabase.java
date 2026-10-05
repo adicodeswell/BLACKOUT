@@ -5,6 +5,9 @@ import androidx.room.RoomDatabase;
 import androidx.room.TypeConverters;
 
 import com.blackout.data.converters.RoomConverters;
+import com.blackout.data.dao.EmergencyReportDao;
+import com.blackout.data.dao.IncidentDao;
+import com.blackout.data.dao.NetworkMessageDao;
 import com.blackout.data.entity.EmergencyReportEntity;
 import com.blackout.data.entity.EvidenceEntity;
 import com.blackout.data.entity.IncidentEntity;
@@ -24,5 +27,7 @@ import com.blackout.data.entity.ResourceEntity;
 )
 @TypeConverters({RoomConverters.class})
 public abstract class BlackoutDatabase extends RoomDatabase {
-    // abstract DAOs will go here in Phase 2
+    public abstract NetworkMessageDao networkMessageDao();
+    public abstract EmergencyReportDao emergencyReportDao();
+    public abstract IncidentDao incidentDao();
 }
