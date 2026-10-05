@@ -23,4 +23,6 @@ public interface IncidentDao {
 
     @Query("SELECT * FROM incidents ORDER BY lastUpdatedAt DESC")
     List<IncidentEntity> findAll();
+    @Query("SELECT * FROM incidents WHERE category = :category AND status = :status")
+    List<IncidentEntity> findByCategoryAndStatus(String category, String status);
 }
