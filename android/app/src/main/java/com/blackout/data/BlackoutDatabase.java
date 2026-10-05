@@ -8,6 +8,8 @@ import com.blackout.data.converters.RoomConverters;
 import com.blackout.data.dao.EmergencyReportDao;
 import com.blackout.data.dao.IncidentDao;
 import com.blackout.data.dao.NetworkMessageDao;
+import com.blackout.data.dao.ResourceDao;
+import com.blackout.data.dao.EvidenceDao;
 import com.blackout.data.entity.EmergencyReportEntity;
 import com.blackout.data.entity.EvidenceEntity;
 import com.blackout.data.entity.IncidentEntity;
@@ -30,4 +32,6 @@ public abstract class BlackoutDatabase extends RoomDatabase {
     public abstract NetworkMessageDao networkMessageDao();
     public abstract EmergencyReportDao emergencyReportDao();
     public abstract IncidentDao incidentDao();
+    public abstract ResourceDao resourceDao();
+    public abstract EvidenceDao evidenceDao();
 }

@@ -4,18 +4,19 @@ import android.content.Context;
 import androidx.room.Room;
 
 import com.blackout.data.repository.MessageRepository;
+import com.blackout.data.repository.IncidentRepository;
 import com.blackout.network.protocol.NetworkMessage;
 import com.blackout.network.protocol.MessageType;
 import com.blackout.data.migrations.DatabaseMigrations;
+import com.blackout.data.entity.*;
 
-/**
- * Pure-Java DATA engine facade.
- * Orchestrates repositories and enforces architectural rules.
- */
+import java.util.List;
+
 public class RoomDataEngine {
 
     private final BlackoutDatabase database;
     private final MessageRepository messageRepository;
+    private final IncidentRepository incidentRepository;
 
     public RoomDataEngine(Context context) {
         this.database = Room.databaseBuilder(
@@ -24,33 +25,58 @@ public class RoomDataEngine {
                 "blackout_database"
         )
         .addMigrations(DatabaseMigrations.ALL_MIGRATIONS)
-        // Explicitly NOT calling fallbackToDestructiveMigration() to enforce data preservation
         .build();
         
         this.messageRepository = new MessageRepository(database.networkMessageDao());
+        this.incidentRepository = new IncidentRepository(database.incidentDao(), database.emergencyReportDao());
     }
     
-    // For testing injection
     public RoomDataEngine(BlackoutDatabase db, MessageRepository msgRepo) {
         this.database = db;
         this.messageRepository = msgRepo;
+        if(db != null) { this.incidentRepository = new IncidentRepository(db.incidentDao(), db.emergencyReportDao()); } else { this.incidentRepository = null; }
     }
 
     public void saveMessage(NetworkMessage message) {
-        // Enforce Architectural Rule: DIRECT messages MUST have encryption
         if (message.getMessageType() == MessageType.DIRECT && message.getEncryption() == null) {
             throw new IllegalArgumentException("DIRECT messages must be encrypted before saving.");
         }
-        
         messageRepository.saveMessage(message);
-        
-        // In future phases: 
-        // if (message.getMessageType() == MessageType.REPORT) {
-        //     reportRepository.processReportMessage(message);
-        // }
     }
 
     public NetworkMessage getMessage(String messageId) {
         return messageRepository.getMessage(messageId);
+    }
+
+    public List<NetworkMessageEntity> getPendingOutbound() {
+        return database.networkMessageDao().findPendingOutbound();
+    }
+
+    public void markDelivered(String messageId, long deliveredAt) {
+        database.networkMessageDao().updateDeliveryState(messageId, "DELIVERED", deliveredAt);
+    }
+
+    public void processReport(EmergencyReportEntity report) {
+        incidentRepository.processReport(report);
+    }
+
+    public IncidentEntity getIncident(String incidentId) {
+        return database.incidentDao().findById(incidentId);
+    }
+
+    public List<IncidentEntity> listIncidents() {
+        return database.incidentDao().findAll();
+    }
+
+    public void createResource(ResourceEntity resource) {
+        database.resourceDao().insert(resource);
+    }
+
+    public List<ResourceEntity> listResources() {
+        return database.resourceDao().findAll();
+    }
+
+    public void addEvidence(EvidenceEntity evidence) {
+        database.evidenceDao().insert(evidence);
     }
 }
