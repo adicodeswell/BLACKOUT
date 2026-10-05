@@ -1,0 +1,14 @@
+PLAN:
+1. Update `MessageDto.ts`: Add `MessageEncryption` interface and `encryption?: MessageEncryption` field to `MessageDto`.
+2. Update `NetworkMessage.java`: Add `EncryptionMetadata` nested class (or equivalent fields) to match `MessageEncryption`. Add `encryption` field and Builder methods.
+3. Update `MessageSerializer.java`: Serialize/deserialize the new encryption fields.
+4. Update `MessageValidator.java`:
+   - If `messageType == DIRECT`:
+     - `destinationDeviceId` MUST be present.
+     - `encryption` metadata MUST be present.
+   - Ensure these rules do not apply to other types (e.g., `REPORT` requires no encryption or destination by default).
+5. Update Tests:
+   - Add tests to `MessageValidatorTest.java` (if exists, or `NetworkMessageTest`, or create it) to verify DIRECT validation passes/fails correctly.
+   - Update `MessageSerializerTest.java` to handle the new encryption field.
+
+(Note: RoomDataEngine, Data DAOs, and Entities do not exist yet in the actual repository, so I will not implement database-level separation of DIRECT vs REPORT. The architectural separation will be enforced at the Network boundary and documented for when DataEngine is built.)
