@@ -1,32 +1,26 @@
-import React, { useEffect, useState } from "react";
-import { SafeAreaView, Text, View } from "react-native";
-import { NativeBridgeAdapter } from "./src/adapters/native/NativeBridgeAdapter";
+import React from 'react';
+import { StatusBar } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { RootNavigator } from './src/navigation/RootNavigator';
 
-export default function App() {
-  const [pingResult, setPingResult] = useState<string>("Pinging native bridge...");
-
-  useEffect(() => {
-    async function testNativeBridge() {
-      const bridge = new NativeBridgeAdapter();
-      const result = await bridge.pingNative();
-
-      if (!result.ok) {
-        console.error(result.error);
-        setPingResult("Error: " + JSON.stringify(result.error));
-      } else {
-        console.log("BLACKOUT native ping:", result.data);
-        setPingResult("BLACKOUT native bridge smoke test\nResult: " + JSON.stringify(result.data));
-      }
-    }
-
-    testNativeBridge();
-  }, []);
+const AppContent: React.FC = () => {
+  const { isDark } = useTheme();
 
   return (
-    <SafeAreaView style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-      <View>
-        <Text style={{ textAlign: "center", fontSize: 16 }}>{pingResult}</Text>
-      </View>
-    </SafeAreaView>
+    <>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <RootNavigator />
+    </>
+  );
+};
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
