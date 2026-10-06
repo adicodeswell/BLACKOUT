@@ -57,11 +57,11 @@ around five observed failure modes:
 
 | # | Failure mode | What actually happens on the ground |
 |---|--------------|--------------------------------------|
-| **P-1** | **Infrastructure collapse** | Cell towers lose power or backhaul; the cellular network itself becomes the casualty. Every internet-dependent app dies with it. |
-| **P-2** | **Cascading overload** | Surviving infrastructure is swamped. Calls fail, messages stall in "sending…", and the few working channels are unusable precisely when everyone needs them. |
-| **P-3** | **Information vacuum → rumor** | With no trusted feed, fear fills the gap. Unverified claims ("the bridge is out", "hospital is closed") propagate at full speed with no way to weigh them. |
-| **P-4** | **Coordination absence** | Responders, trapped people, and families have no shared, current picture of where help is needed and where danger has moved. |
-| **P-5** | **Last-mile knowledge stays trapped** | The person who *knows* the road is blocked has no channel to the rescuer ten streets away. Critical knowledge dies in pockets. |
+| **P1** | **Infrastructure collapse** | Cell towers lose power or backhaul; the cellular network itself becomes the casualty. Every internet-dependent app dies with it. |
+| **P2** | **Cascading overload** | Surviving infrastructure is swamped. Calls fail, messages stall in "sending…", and the few working channels are unusable precisely when everyone needs them. |
+| **P3** | **Information vacuum → rumor** | With no trusted feed, fear fills the gap. Unverified claims ("the bridge is out", "hospital is closed") propagate at full speed with no way to weigh them. |
+| **P4** | **Coordination absence** | Responders, trapped people, and families have no shared, current picture of where help is needed and where danger has moved. |
+| **P5** | **Last-mile knowledge stays trapped** | The person who *knows* the road is blocked has no channel to the rescuer ten streets away. Critical knowledge dies in pockets. |
 
 The uncomfortable truth these five rows share: **nearly every communication tool we
 own assumes infrastructure that disasters take away first.** BLACKOUT removes that
