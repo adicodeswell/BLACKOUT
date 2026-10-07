@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useResourceDetail } from '../hooks/useResourceDetail';
+import { NavIcon, NavIconName } from '../components/NavIcon';
 import type { ResourceService } from '../services/ResourceService';
 import type { ResourceAvailability, ResourceType } from '../contracts/data/ResourceDto';
 
@@ -26,13 +27,13 @@ const AVAILABILITY_OPTIONS: ResourceAvailability[] = [
   'UNKNOWN',
 ];
 
-const TYPE_EMOJI_MAP: Record<ResourceType, string> = {
-  WATER: '💧',
-  FOOD: '🍲',
-  SHELTER: '⛺',
-  MEDICINE: '💊',
-  MEDICAL: '🚑',
-  OTHER: '📦',
+const TYPE_ICON_MAP: Record<ResourceType, NavIconName> = {
+  WATER: 'WATER',
+  FOOD: 'FOOD',
+  SHELTER: 'SHELTER',
+  MEDICINE: 'MEDICAL',
+  MEDICAL: 'MEDICAL',
+  OTHER: 'OTHER',
 };
 
 export const ResourceDetailScreen: React.FC<ResourceDetailScreenProps> = ({
@@ -78,13 +79,13 @@ export const ResourceDetailScreen: React.FC<ResourceDetailScreenProps> = ({
     return (
       <View style={[styles.centerContainer, { backgroundColor: theme.colors.background }]}>
         <View style={[styles.iconCircle, { backgroundColor: theme.colors.dangerBg }]}>
-          <Text style={styles.iconCircleText}>⚠️</Text>
+          <NavIcon name="WARNING" size={24} color={theme.colors.severityCritical} />
         </View>
         <Text style={[styles.errorTitle, { color: theme.colors.textPrimary }]}>
-          Resource Not Found
+          Resource Station Not Found
         </Text>
         <Text style={[styles.errorSubtitle, { color: theme.colors.textSecondary }]}>
-          {error?.message || 'The requested resource station could not be found.'}
+          {error?.message || 'The requested resource station could not be found in local storage.'}
         </Text>
         <TouchableOpacity
           style={[styles.button, { backgroundColor: theme.colors.primary }]}
@@ -98,30 +99,30 @@ export const ResourceDetailScreen: React.FC<ResourceDetailScreenProps> = ({
   }
 
   const availColor = getAvailabilityColor(resource.availability);
-  const emoji = TYPE_EMOJI_MAP[resource.type] || '📦';
+  const iconName = TYPE_ICON_MAP[resource.type] || 'OTHER';
 
-  const capacityPercent =
-    resource.capacity && resource.remaining_capacity !== undefined
-      ? Math.round((resource.remaining_capacity / resource.capacity) * 100)
-      : undefined;
+  const hasCapacityData = resource.capacity !== undefined && resource.capacity > 0 && resource.remaining_capacity !== undefined;
+  const capacityPercent = hasCapacityData
+    ? Math.min(100, Math.max(0, Math.round((resource.remaining_capacity! / resource.capacity!) * 100)))
+    : undefined;
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Navigation Bar */}
-        <View style={styles.navRow}>
-          <TouchableOpacity
-            onPress={onBack}
-            style={[styles.backButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.backButtonText, { color: theme.colors.textPrimary }]}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={[styles.navIdText, { color: theme.colors.textSecondary }]}>
-            RESOURCE #{resource.resource_id}
-          </Text>
-        </View>
+      {/* Navigation Bar */}
+      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.surfaceBorder }]}>
+        <TouchableOpacity
+          onPress={onBack}
+          style={[styles.backButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.backButtonText, { color: theme.colors.primary }]}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={[styles.navIdText, { color: theme.colors.textSecondary }]}>
+          STATION ID: {resource.resource_id}
+        </Text>
+      </View>
 
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* 1. Resource Hero Card */}
         <View
           style={[
@@ -135,7 +136,7 @@ export const ResourceDetailScreen: React.FC<ResourceDetailScreenProps> = ({
         >
           <View style={styles.heroTopRow}>
             <View style={[styles.typeBadge, { backgroundColor: theme.colors.primary + '18' }]}>
-              <Text style={styles.typeBadgeEmoji}>{emoji}</Text>
+              <NavIcon name={iconName} size={14} color={theme.colors.primary} />
               <Text style={[styles.typeBadgeText, { color: theme.colors.primary }]}>{resource.type}</Text>
             </View>
             <View style={[styles.availBadge, { backgroundColor: availColor + '18', borderColor: availColor }]}>
@@ -145,54 +146,74 @@ export const ResourceDetailScreen: React.FC<ResourceDetailScreenProps> = ({
           </View>
 
           <Text style={[styles.heroName, { color: theme.colors.textPrimary }]}>{resource.name}</Text>
-          {resource.description && (
+          {resource.description ? (
             <Text style={[styles.heroDesc, { color: theme.colors.textSecondary }]}>{resource.description}</Text>
-          )}
+          ) : null}
 
           <View style={[styles.heroMetaRow, { borderTopColor: theme.colors.surfaceBorder }]}>
             <Text style={[styles.heroMetaText, { color: theme.colors.textSecondary }]}>
-              📡 Source Node: {resource.source_device_id.slice(0, 12)}
+              Source Node: {resource.source_device_id}
             </Text>
             <Text style={[styles.heroMetaText, { color: theme.colors.textSecondary }]}>
-              🔄 Updated: {new Date(resource.updated_at).toLocaleTimeString()}
+              Updated: {new Date(resource.updated_at).toLocaleTimeString()}
             </Text>
           </View>
         </View>
 
-        {/* 2. Capacity & Availability Card */}
-        {capacityPercent !== undefined && (
-          <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-            <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>📊 Capacity & Stock Level</Text>
-            <View style={[styles.track, { backgroundColor: theme.colors.surfaceBorder }]}>
-              <View style={[styles.fill, { width: `${capacityPercent}%`, backgroundColor: availColor }]} />
-            </View>
-            <View style={styles.capacityMetaRow}>
-              <Text style={[styles.capacityValueText, { color: theme.colors.textPrimary }]}>
-                {resource.remaining_capacity} {resource.type} units remaining
-              </Text>
-              <Text style={[styles.capacityTotalText, { color: theme.colors.textSecondary }]}>
-                Total Capacity: {resource.capacity}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* 3. Location Information */}
+        {/* 2. Capacity & Stock Level Card */}
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>📍 Location Coordinates</Text>
-          <View style={[styles.locationBox, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.cardHeaderRow}>
+            <NavIcon name="QUEUE" size={16} color={theme.colors.primary} />
+            <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Capacity & Stock Level</Text>
+          </View>
+
+          {hasCapacityData && capacityPercent !== undefined ? (
+            <View>
+              <View style={[styles.track, { backgroundColor: theme.colors.surfaceBorder }]}>
+                <View style={[styles.fill, { width: `${capacityPercent}%`, backgroundColor: availColor }]} />
+              </View>
+              <View style={styles.capacityMetaRow}>
+                <Text style={[styles.capacityValueText, { color: theme.colors.textPrimary }]}>
+                  {resource.remaining_capacity === 0
+                    ? 'OUT OF STOCK'
+                    : `${resource.remaining_capacity} / ${resource.capacity} ${resource.type} units remaining`}
+                </Text>
+                <Text style={[styles.capacityTotalText, { color: availColor }]}>
+                  {capacityPercent}%
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={[styles.noCapacityText, { color: theme.colors.textSecondary }]}>
+              Capacity details not reported for this emergency station.
+            </Text>
+          )}
+        </View>
+
+        {/* 3. Location Information Card */}
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+          <View style={styles.cardHeaderRow}>
+            <NavIcon name="LOCATION" size={16} color={theme.colors.primary} />
+            <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Geospatial Coordinates</Text>
+          </View>
+
+          <View style={[styles.locationBox, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}>
             <Text style={[styles.locationCoordsText, { color: theme.colors.textPrimary }]}>
               {resource.location.latitude.toFixed(5)}, {resource.location.longitude.toFixed(5)}
             </Text>
             <Text style={[styles.locationAccuracyText, { color: theme.colors.textSecondary }]}>
-              GNSS Fix Accuracy: ±{resource.location.accuracy_m} meters
+              GNSS Accuracy: ±{resource.location.accuracy_m} meters
             </Text>
           </View>
         </View>
 
-        {/* 4. Update Availability Action */}
+        {/* 4. Update Availability Action Card */}
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>⚙️ Update Availability Status</Text>
+          <View style={styles.cardHeaderRow}>
+            <NavIcon name="Settings" size={16} color={theme.colors.primary} />
+            <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Update Station Availability</Text>
+          </View>
+
           <View style={styles.chipGroup}>
             {AVAILABILITY_OPTIONS.map((availOpt) => {
               const isSelected = resource.availability === availOpt;
@@ -212,7 +233,7 @@ export const ResourceDetailScreen: React.FC<ResourceDetailScreenProps> = ({
                   <Text
                     style={[
                       styles.chipOptionText,
-                      { color: isSelected ? '#FFFFFF' : theme.colors.textPrimary, fontWeight: isSelected ? '700' : '500' },
+                      { color: isSelected ? '#FFFFFF' : theme.colors.textPrimary, fontWeight: isSelected ? '700' : '600' },
                     ]}
                   >
                     {availOpt}
@@ -229,21 +250,33 @@ export const ResourceDetailScreen: React.FC<ResourceDetailScreenProps> = ({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  header: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+  },
+  backButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  backButtonText: { fontSize: 13, fontWeight: '700' },
+  navIdText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
   scrollContent: { padding: 16, paddingBottom: 32 },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  loadingText: { marginTop: 12, fontSize: 14 },
+  loadingText: { marginTop: 12, fontSize: 14, fontWeight: '600' },
   iconCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  iconCircleText: { fontSize: 24 },
-  errorTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
-  errorSubtitle: { fontSize: 13, textAlign: 'center', marginBottom: 16, maxWidth: 280 },
-  navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  backButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
-  backButtonText: { fontSize: 13, fontWeight: '600' },
-  navIdText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  errorTitle: { fontSize: 18, fontWeight: '800', marginBottom: 6 },
+  errorSubtitle: { fontSize: 13, textAlign: 'center', marginBottom: 16, maxWidth: 280, lineHeight: 18 },
   heroCard: { padding: 18, borderRadius: 14, borderWidth: 1, borderLeftWidth: 4, marginBottom: 14 },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  typeBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 },
-  typeBadgeEmoji: { fontSize: 14 },
+  typeBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 6 },
   typeBadgeText: { fontSize: 11, fontWeight: '800' },
   availBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, gap: 5 },
   availDot: { width: 6, height: 6, borderRadius: 3 },
@@ -251,20 +284,22 @@ const styles = StyleSheet.create({
   heroName: { fontSize: 20, fontWeight: '800', lineHeight: 26, marginBottom: 6 },
   heroDesc: { fontSize: 14, lineHeight: 20, marginBottom: 14 },
   heroMetaRow: { paddingTop: 10, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between' },
-  heroMetaText: { fontSize: 11, fontWeight: '500' },
+  heroMetaText: { fontSize: 11, fontWeight: '600' },
   card: { padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 14 },
-  cardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  cardTitle: { fontSize: 15, fontWeight: '700' },
   track: { height: 8, borderRadius: 4, width: '100%', marginBottom: 10, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 4 },
   capacityMetaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   capacityValueText: { fontSize: 13, fontWeight: '700' },
-  capacityTotalText: { fontSize: 12 },
-  locationBox: { padding: 12, borderRadius: 8 },
+  capacityTotalText: { fontSize: 13, fontWeight: '800' },
+  noCapacityText: { fontSize: 12, fontStyle: 'italic' },
+  locationBox: { padding: 12, borderRadius: 8, borderWidth: 1 },
   locationCoordsText: { fontSize: 14, fontWeight: '700' },
   locationAccuracyText: { fontSize: 12, marginTop: 2 },
   chipGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chipOption: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  chipOption: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1, minHeight: 44, justifyContent: 'center' },
   chipOptionText: { fontSize: 12 },
-  button: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-  buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  button: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 8, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
+  buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });

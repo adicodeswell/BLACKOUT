@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PeerDto } from '../contracts/network/PeerDto';
+import { NavIcon } from '../components/NavIcon';
 
 interface PeerDetailScreenProps {
   peerId: string;
@@ -53,7 +54,7 @@ export const PeerDetailScreen: React.FC<PeerDetailScreenProps> = ({
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
           <View style={styles.nodeHeader}>
             <View style={[styles.avatarCircle, { backgroundColor: theme.colors.primary }]}>
-              <Text style={styles.avatarText}>{(peerId || 'N').charAt(0).toUpperCase()}</Text>
+              <NavIcon name="PEER" size={24} color="#FFFFFF" />
             </View>
             <View style={styles.nodeInfo}>
               <Text style={[styles.nodeTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
@@ -103,7 +104,8 @@ export const PeerDetailScreen: React.FC<PeerDetailScreenProps> = ({
               : ['STORE_AND_FORWARD', 'DIRECT_CHAT', 'EMERGENCY_RELAY']
             ).map((cap, idx) => (
               <View key={idx} style={[styles.capTag, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}>
-                <Text style={[styles.capTagText, { color: theme.colors.primary }]}>⚡ {cap}</Text>
+                <NavIcon name="RELAY" size={12} color={theme.colors.primary} />
+                <Text style={[styles.capTagText, { color: theme.colors.primary }]}>{cap}</Text>
               </View>
             ))}
           </View>
@@ -114,7 +116,8 @@ export const PeerDetailScreen: React.FC<PeerDetailScreenProps> = ({
             onPress={() => onStartChat(peerId)}
             activeOpacity={0.8}
           >
-            <Text style={styles.chatButtonText}>💬 Start Direct Message</Text>
+            <NavIcon name="MESSAGE" size={18} color="#FFFFFF" />
+            <Text style={styles.chatButtonText}>Start Direct Message</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -220,6 +223,9 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   capTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
@@ -230,10 +236,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chatButton: {
-    paddingVertical: 14,
-    borderRadius: 10,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 8,
   },
   chatButtonText: {
     color: '#FFFFFF',

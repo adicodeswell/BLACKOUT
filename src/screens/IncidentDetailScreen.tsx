@@ -9,6 +9,12 @@ import {
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useIncidentDetail } from '../hooks/useIncidentDetail';
+import { SeverityBadge } from '../components/SeverityBadge';
+import { ConfidenceBadge } from '../components/ConfidenceBadge';
+import { StatusPill } from '../components/StatusPill';
+import { SectionHeader } from '../components/SectionHeader';
+import { ErrorState } from '../components/ErrorState';
+import { NavIcon, NavIconName } from '../components/NavIcon';
 import type { IncidentService } from '../services/IncidentService';
 import type { IncidentStatus } from '../contracts/data/IncidentDto';
 import type { Severity, VerificationLevel } from '../contracts/data/EmergencyReport';
@@ -21,17 +27,17 @@ interface IncidentDetailScreenProps {
 
 const STATUS_OPTIONS: IncidentStatus[] = ['OPEN', 'MONITORING', 'RESOLVED', 'EXPIRED'];
 
-const CATEGORY_EMOJI_MAP: Record<string, string> = {
-  FIRE: '🔥',
-  FLOOD: '🌊',
-  MEDICAL: '🚑',
-  BUILDING_COLLAPSE: '🏗️',
-  TRAPPED_PERSON: '🆘',
-  BLOCKED_ROAD: '🚧',
-  FOOD: '🍲',
-  WATER: '💧',
-  SHELTER: '⛺',
-  OTHER: '⚠️',
+const CATEGORY_ICON_MAP: Record<string, NavIconName> = {
+  FIRE: 'FIRE',
+  FLOOD: 'FLOOD',
+  MEDICAL: 'MEDICAL',
+  BUILDING_COLLAPSE: 'WARNING',
+  TRAPPED_PERSON: 'WARNING',
+  BLOCKED_ROAD: 'BLOCKED_ROAD',
+  FOOD: 'Resources',
+  WATER: 'WATER',
+  SHELTER: 'SHELTER',
+  OTHER: 'OTHER',
 };
 
 export const IncidentDetailScreen: React.FC<IncidentDetailScreenProps> = ({
@@ -65,17 +71,17 @@ export const IncidentDetailScreen: React.FC<IncidentDetailScreenProps> = ({
     }
   };
 
-  const getConfidenceColor = (level?: VerificationLevel) => {
-    switch (level) {
-      case 'CONFIRMED':
-        return theme.colors.confidenceConfirmed;
-      case 'HIGH_CONFIDENCE':
-        return theme.colors.confidenceHigh;
-      case 'LIKELY':
-        return theme.colors.confidenceLikely;
-      case 'UNVERIFIED':
+  const getStatusVariant = (status?: string) => {
+    switch (status) {
+      case 'OPEN':
+        return 'danger';
+      case 'MONITORING':
+        return 'warning';
+      case 'RESOLVED':
+        return 'active';
+      case 'EXPIRED':
       default:
-        return theme.colors.confidenceUnverified;
+        return 'neutral';
     }
   };
 
@@ -98,7 +104,7 @@ export const IncidentDetailScreen: React.FC<IncidentDetailScreenProps> = ({
       <View style={[styles.centerContainer, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
         <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
-          Loading Incident Overview...
+          Loading Operational Overview...
         </Text>
       </View>
     );
@@ -107,52 +113,52 @@ export const IncidentDetailScreen: React.FC<IncidentDetailScreenProps> = ({
   if (error || !incident) {
     return (
       <View style={[styles.centerContainer, { backgroundColor: theme.colors.background }]}>
-        <View style={[styles.iconCircle, { backgroundColor: theme.colors.dangerBg }]}>
-          <Text style={styles.iconCircleText}>⚠️</Text>
-        </View>
-        <Text style={[styles.errorTitle, { color: theme.colors.textPrimary }]}>
-          Incident Not Found
-        </Text>
-        <Text style={[styles.errorSubtitle, { color: theme.colors.textSecondary }]}>
-          {error?.message || 'The requested incident does not exist in local storage.'}
-        </Text>
+        <ErrorState
+          message={error?.message || 'The requested incident does not exist in local storage.'}
+          onRetry={onBack}
+        />
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: theme.colors.primary }]}
+          style={[styles.button, { backgroundColor: theme.colors.primary, marginTop: 16 }]}
           onPress={onBack}
           activeOpacity={0.8}
         >
-          <Text style={styles.buttonText}>Return to Incident Ledger</Text>
+          <Text style={styles.buttonText}>Return to Incident Directory</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   const severityColor = getSeverityColor(incident.severity);
-  const confidenceColor = getConfidenceColor(incident.confidence_level);
   const confidencePercent = getConfidencePercentage(incident.confidence_level);
-  const categoryEmoji = CATEGORY_EMOJI_MAP[incident.category] || '⚠️';
+  const categoryIcon = CATEGORY_ICON_MAP[incident.category] || 'OTHER';
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Navigation Bar */}
         <View style={styles.navRow}>
           <TouchableOpacity
             onPress={onBack}
-            style={[styles.backButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
+            style={[
+              styles.backButton,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
+            ]}
             activeOpacity={0.7}
           >
             <Text style={[styles.backButtonText, { color: theme.colors.textPrimary }]}>← Back</Text>
           </TouchableOpacity>
-          <Text style={[styles.navIdText, { color: theme.colors.textSecondary }]}>
-            INCIDENT ID #{incident.incident_id}
-          </Text>
+
+          <View style={styles.navMeta}>
+            <Text style={[styles.navIdText, { color: theme.colors.textMuted }]} numberOfLines={1}>
+              INCIDENT #{incident.incident_id.slice(0, 10)}
+            </Text>
+          </View>
         </View>
 
-        {/* 1. Hero Emergency Header Surface */}
+        {/* 1. INCIDENT HERO SURFACE */}
         <View
           style={[
-            styles.heroCard,
+            styles.heroSurface,
             {
               backgroundColor: theme.colors.surface,
               borderColor: incident.severity === 'CRITICAL' ? theme.colors.severityCritical + '60' : theme.colors.surfaceBorder,
@@ -160,160 +166,223 @@ export const IncidentDetailScreen: React.FC<IncidentDetailScreenProps> = ({
             },
           ]}
         >
-          <View style={styles.heroTopRow}>
-            <View style={[styles.severityTag, { backgroundColor: severityColor }]}>
-              <Text style={styles.severityTagText}>{incident.severity}</Text>
+          {/* Eyebrow & Badges */}
+          <View style={styles.heroEyebrowRow}>
+            <View style={styles.heroCategoryGroup}>
+              <NavIcon name={categoryIcon} color={severityColor} size={16} />
+              <Text style={[styles.eyebrowText, { color: theme.colors.textMuted }]}>
+                {incident.category}
+              </Text>
             </View>
-            <View style={[styles.statusTag, { backgroundColor: theme.colors.primary + '18', borderColor: theme.colors.primary }]}>
-              <Text style={[styles.statusTagText, { color: theme.colors.primary }]}>{incident.status}</Text>
+            <View style={styles.heroBadges}>
+              <SeverityBadge severity={incident.severity} size="small" />
+              <StatusPill label={incident.status} variant={getStatusVariant(incident.status)} showDot />
             </View>
           </View>
 
-          <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]}>
-            {categoryEmoji} {incident.title}
+          {/* Primary Incident Title */}
+          <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]} numberOfLines={2}>
+            {incident.title}
           </Text>
 
+          {/* Description */}
           <Text style={[styles.heroSummary, { color: theme.colors.textSecondary }]}>
             {incident.summary}
           </Text>
 
+          {/* Timestamps & Secondary Metadata */}
           <View style={[styles.heroMetaRow, { borderTopColor: theme.colors.surfaceBorder }]}>
-            <Text style={[styles.heroMetaText, { color: theme.colors.textSecondary }]}>
-              ⏱️ First Reported: {new Date(incident.first_reported_at).toLocaleTimeString()}
-            </Text>
-            <Text style={[styles.heroMetaText, { color: theme.colors.textSecondary }]}>
-              🔄 Updated: {new Date(incident.last_updated_at).toLocaleTimeString()}
+            <View style={styles.metaInlineItem}>
+              <NavIcon name="CLOCK" color={theme.colors.textMuted} size={12} />
+              <Text style={[styles.metaInlineText, { color: theme.colors.textSecondary }]}>
+                Reported {new Date(incident.first_reported_at).toLocaleTimeString()}
+              </Text>
+            </View>
+            <View style={styles.metaInlineItem}>
+              <NavIcon name="REFRESH" color={theme.colors.textMuted} size={12} />
+              <Text style={[styles.metaInlineText, { color: theme.colors.textSecondary }]}>
+                Updated {new Date(incident.last_updated_at).toLocaleTimeString()}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* 2. CONFIDENCE INTELLIGENCE SURFACE */}
+        <View
+          style={[
+            styles.intelligenceSurface,
+            {
+              backgroundColor: theme.colors.surfaceElevated,
+              borderColor: theme.colors.surfaceBorder,
+            },
+          ]}
+        >
+          <View style={styles.intelligenceHeaderRow}>
+            <View style={{ flexShrink: 1 }}>
+              <Text style={[styles.sectionLabel, { color: theme.colors.textMuted }]}>
+                CONFIDENCE & TRUST SIGNAL
+              </Text>
+              <View style={styles.scoreRow}>
+                <Text style={[styles.scoreValue, { color: theme.colors.textPrimary }]}>
+                  {confidencePercent}%
+                </Text>
+                <ConfidenceBadge level={incident.confidence_level} size="medium" />
+              </View>
+            </View>
+          </View>
+
+          {/* Horizontal Confidence Track */}
+          <View style={[styles.confidenceMeterTrack, { backgroundColor: theme.colors.surfaceBorder }]}>
+            <View
+              style={[
+                styles.confidenceMeterFill,
+                { width: `${confidencePercent}%`, backgroundColor: theme.colors.primary },
+              ]}
+            />
+          </View>
+
+          <Text style={[styles.sourceSubtext, { color: theme.colors.textSecondary }]}>
+            Based on {incident.independent_source_count} independent P2P source report(s)
+          </Text>
+
+          {/* Operational Metrics Bar */}
+          <View style={[styles.metricsBar, { backgroundColor: theme.colors.background }]}>
+            <View style={styles.metricBarCell}>
+              <Text style={[styles.metricBarValue, { color: theme.colors.textPrimary }]}>
+                {incident.independent_source_count}
+              </Text>
+              <Text style={[styles.metricBarLabel, { color: theme.colors.textMuted }]}>SOURCES</Text>
+            </View>
+            <View style={[styles.metricBarDivider, { backgroundColor: theme.colors.surfaceBorder }]} />
+            <View style={styles.metricBarCell}>
+              <Text style={[styles.metricBarValue, { color: theme.colors.textPrimary }]}>
+                {incident.evidence_count}
+              </Text>
+              <Text style={[styles.metricBarLabel, { color: theme.colors.textMuted }]}>EVIDENCE</Text>
+            </View>
+            <View style={[styles.metricBarDivider, { backgroundColor: theme.colors.surfaceBorder }]} />
+            <View style={styles.metricBarCell}>
+              <Text
+                style={[
+                  styles.metricBarValue,
+                  { color: incident.contradiction_count > 0 ? theme.colors.severityCritical : theme.colors.textPrimary },
+                ]}
+              >
+                {incident.contradiction_count}
+              </Text>
+              <Text style={[styles.metricBarLabel, { color: theme.colors.textMuted }]}>CONFLICTS</Text>
+            </View>
+          </View>
+
+          {/* Rationale callout if available */}
+          {confidence?.rationale ? (
+            <View style={[styles.rationaleContainer, { backgroundColor: theme.colors.background }]}>
+              <Text style={[styles.rationaleTitle, { color: theme.colors.textPrimary }]}>
+                WHY THIS SCORE?
+              </Text>
+              <Text style={[styles.rationaleBody, { color: theme.colors.textSecondary }]}>
+                {confidence.rationale}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Advisory Disclaimer */}
+          <View style={[styles.disclaimerBox, { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder }]}>
+            <Text style={[styles.disclaimerText, { color: theme.colors.warningText }]}>
+              ⚠️ CONFIDENCE ≠ GUARANTEED TRUTH. Advisory offline heuristic score calculated from multi-source report density and evidence state.
             </Text>
           </View>
         </View>
 
-        {/* 2. Location Information Card */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>📍 Incident Location</Text>
+        {/* 3. LOCATION SECTION */}
+        <View style={styles.sectionDividerBlock}>
+          <SectionHeader title="LOCATION" />
           {incident.location ? (
-            <View style={styles.locationContainer}>
-              <Text style={[styles.locationCoords, { color: theme.colors.textPrimary }]}>
-                {incident.location.latitude.toFixed(5)}, {incident.location.longitude.toFixed(5)}
-              </Text>
-              <Text style={[styles.locationMeta, { color: theme.colors.textSecondary }]}>
-                GNSS Accuracy Radius: ±{incident.location.accuracy_m} meters
-              </Text>
+            <View style={styles.locationContentRow}>
+              <NavIcon name="LOCATION" color={theme.colors.primary} size={18} />
+              <View style={{ marginLeft: 10, flexShrink: 1 }}>
+                <Text style={[styles.coordsText, { color: theme.colors.textPrimary }]}>
+                  {incident.location.latitude.toFixed(5)}, {incident.location.longitude.toFixed(5)}
+                </Text>
+                <Text style={[styles.accuracyText, { color: theme.colors.textSecondary }]}>
+                  GNSS Accuracy ±{incident.location.accuracy_m}m
+                </Text>
+              </View>
             </View>
           ) : (
-            <Text style={[styles.bodyText, { color: theme.colors.textSecondary }]}>
+            <Text style={[styles.secondaryBodyText, { color: theme.colors.textMuted }]}>
               No spatial coordinates attached to this incident.
             </Text>
           )}
         </View>
 
-        {/* 3. Visual Confidence & Aggregation System */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={[styles.cardTitle, { color: theme.colors.textPrimary, marginBottom: 0 }]}>📊 Confidence & Aggregation</Text>
-            <Text style={[styles.confidenceLevelText, { color: confidenceColor }]}>
-              {incident.confidence_level.replace('_', ' ')}
-            </Text>
-          </View>
-
-          {/* Visual Progress Bar */}
-          <View style={[styles.progressTrack, { backgroundColor: theme.colors.surfaceBorder }]}>
-            <View style={[styles.fillBar, { width: `${confidencePercent}%`, backgroundColor: confidenceColor }]} />
-          </View>
-
-          {/* Core Metrics Grid */}
-          <View style={styles.metricsGrid}>
-            <View style={[styles.gridCell, { backgroundColor: theme.colors.background }]}>
-              <Text style={[styles.gridCellLabel, { color: theme.colors.textSecondary }]}>Independent Sources</Text>
-              <Text style={[styles.gridCellValue, { color: theme.colors.textPrimary }]}>{incident.independent_source_count}</Text>
-            </View>
-            <View style={[styles.gridCell, { backgroundColor: theme.colors.background }]}>
-              <Text style={[styles.gridCellLabel, { color: theme.colors.textSecondary }]}>Supporting Evidence</Text>
-              <Text style={[styles.gridCellValue, { color: theme.colors.textPrimary }]}>{incident.evidence_count}</Text>
-            </View>
-            <View style={[styles.gridCell, { backgroundColor: theme.colors.background }]}>
-              <Text style={[styles.gridCellLabel, { color: theme.colors.textSecondary }]}>Flagged Contradictions</Text>
-              <Text style={[styles.gridCellValue, { color: incident.contradiction_count > 0 ? theme.colors.severityCritical : theme.colors.textPrimary }]}>
-                {incident.contradiction_count}
-              </Text>
-            </View>
-          </View>
-
-          {confidence?.rationale && (
-            <View style={[styles.rationaleBox, { backgroundColor: theme.colors.background }]}>
-              <Text style={[styles.rationaleTitle, { color: theme.colors.textPrimary }]}>Engine Rationale:</Text>
-              <Text style={[styles.rationaleText, { color: theme.colors.textSecondary }]}>{confidence.rationale}</Text>
-            </View>
-          )}
-
-          {/* Disclaimer callout */}
-          <View style={[styles.disclaimerCallout, { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder }]}>
-            <Text style={[styles.disclaimerText, { color: theme.colors.warningText }]}>
-              ⚠️ CONFIDENCE ≠ GUARANTEED TRUTH. Confidence represents an offline P2P heuristic score calculated from multi-source report density and media verification.
-            </Text>
-          </View>
-        </View>
-
-        {/* 4. Contradictions Section */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>⚠️ Contradictions & Conflicts</Text>
+        {/* 4. CONTRADICTIONS SECTION */}
+        <View style={styles.sectionDividerBlock}>
+          <SectionHeader title="CONTRADICTIONS & CONFLICTS" />
           {incident.contradiction_count === 0 ? (
-            <View style={styles.cleanRow}>
-              <Text style={styles.checkIcon}>✓</Text>
-              <Text style={[styles.bodyText, { color: theme.colors.textSecondary }]}>
-                No conflicting reports or spatial discrepancies reported for this incident.
+            <View style={styles.conflictCleanRow}>
+              <NavIcon name="CHECK" color={theme.colors.confidenceConfirmed} size={16} />
+              <Text style={[styles.conflictCleanText, { color: theme.colors.confidenceConfirmed }]}>
+                NO CONFLICTING REPORTS — All available report updates are consistent.
               </Text>
             </View>
           ) : (
-            <View style={[styles.contradictionBanner, { backgroundColor: theme.colors.dangerBg, borderColor: theme.colors.dangerBorder }]}>
-              <Text style={[styles.contradictionTitle, { color: theme.colors.dangerText }]}>
-                ⚠️ {incident.contradiction_count} Conflicting Report(s) Flagged
-              </Text>
-              <Text style={[styles.contradictionSubtext, { color: theme.colors.dangerText }]}>
-                One or more peer nodes reported conflicting severity or location updates. Verify evidence before taking field action.
-              </Text>
+            <View style={[styles.conflictBanner, { backgroundColor: theme.colors.dangerBg, borderColor: theme.colors.dangerBorder }]}>
+              <NavIcon name="WARNING" color={theme.colors.dangerText} size={18} />
+              <View style={{ marginLeft: 10, flexShrink: 1 }}>
+                <Text style={[styles.conflictTitle, { color: theme.colors.dangerText }]}>
+                  {incident.contradiction_count} Conflicting Report(s) Flagged
+                </Text>
+                <Text style={[styles.conflictBody, { color: theme.colors.dangerText }]}>
+                  Peer nodes reported conflicting severity or spatial updates. Verify before action.
+                </Text>
+              </View>
             </View>
           )}
         </View>
 
-        {/* 5. Supporting Evidence Experience */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={[styles.cardTitle, { color: theme.colors.textPrimary, marginBottom: 0 }]}>
-              📷 Evidence Ledger ({evidenceList.length})
+        {/* 5. EVIDENCE LEDGER SECTION */}
+        <View style={styles.sectionDividerBlock}>
+          <View style={styles.sectionHeaderWithAction}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+              EVIDENCE LEDGER ({evidenceList.length})
             </Text>
             <TouchableOpacity
-              style={[styles.smallBtn, { backgroundColor: theme.colors.primary }]}
+              style={[styles.attachBtn, { backgroundColor: theme.colors.primary }]}
               onPress={() => addEvidenceItem('IMAGE', `file:///storage/emulated/0/BLACKOUT/ev_${Date.now()}.jpg`)}
               activeOpacity={0.8}
             >
-              <Text style={styles.smallBtnText}>+ Attach Evidence</Text>
+              <NavIcon name="PLUS" color="#FFFFFF" size={12} />
+              <Text style={styles.attachBtnText}>ADD EVIDENCE</Text>
             </TouchableOpacity>
           </View>
 
           {evidenceList.length === 0 ? (
-            <Text style={[styles.bodyText, { color: theme.colors.textSecondary, marginTop: 12 }]}>
-              No supporting media files attached to this incident.
+            <Text style={[styles.secondaryBodyText, { color: theme.colors.textMuted }]}>
+              No supporting media attached.
             </Text>
           ) : (
-            <View style={styles.evidenceListContainer}>
+            <View style={styles.evidenceRowsList}>
               {evidenceList.map((item) => (
-                <View key={item.evidence_id} style={[styles.evidenceTile, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}>
-                  {/* Media Placeholder Surface */}
-                  <View style={[styles.mediaPlaceholder, { backgroundColor: theme.colors.surfaceBorder }]}>
-                    <Text style={styles.mediaPlaceholderIcon}>📷</Text>
-                  </View>
-                  <View style={styles.evidenceDetails}>
-                    <View style={styles.evidenceTopRow}>
-                      <Text style={[styles.evidenceTypeTag, { color: theme.colors.primary }]}>[{item.type}]</Text>
-                      <Text style={[styles.evidenceStatus, { color: item.analysis_state === 'COMPLETE' ? theme.colors.confidenceConfirmed : theme.colors.textSecondary }]}>
+                <View
+                  key={item.evidence_id}
+                  style={[
+                    styles.evidenceRowItem,
+                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
+                  ]}
+                >
+                  <NavIcon name="EVIDENCE" color={theme.colors.textMuted} size={16} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <View style={styles.evidenceItemTop}>
+                      <Text style={[styles.evidenceType, { color: theme.colors.primary }]}>
+                        [{item.type}]
+                      </Text>
+                      <Text style={[styles.evidenceState, { color: theme.colors.textSecondary }]}>
                         {item.analysis_state}
                       </Text>
                     </View>
-                    <Text style={[styles.evidenceUriText, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                    <Text style={[styles.evidenceUri, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                       {item.local_uri || 'No local URI'}
-                    </Text>
-                    <Text style={[styles.evidenceMetaText, { color: theme.colors.textSecondary }]}>
-                      Source Node: {item.source_device_id.slice(0, 12)}
                     </Text>
                   </View>
                 </View>
@@ -322,29 +391,50 @@ export const IncidentDetailScreen: React.FC<IncidentDetailScreenProps> = ({
           )}
         </View>
 
-        {/* 6. Incident Status Control */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>⚙️ Incident Lifecycle Status</Text>
-          <View style={styles.statusChipGroup}>
-            {STATUS_OPTIONS.map((statusOpt) => {
+        {/* 6. INCIDENT LIFECYCLE STATUS SECTION */}
+        <View style={styles.sectionDividerBlock}>
+          <SectionHeader title="INCIDENT STATUS" />
+
+          {/* Operational Timeline Progress Selector */}
+          <View style={styles.timelineContainer}>
+            {STATUS_OPTIONS.map((statusOpt, index) => {
               const isSelected = incident.status === statusOpt;
               return (
                 <TouchableOpacity
                   key={statusOpt}
-                  style={[
-                    styles.statusChip,
-                    {
-                      backgroundColor: isSelected ? theme.colors.primary : theme.colors.background,
-                      borderColor: isSelected ? theme.colors.primary : theme.colors.surfaceBorder,
-                    },
-                  ]}
+                  style={styles.timelineStep}
                   onPress={() => updateStatus(statusOpt)}
                   activeOpacity={0.8}
                 >
+                  <View style={styles.stepIndicatorRow}>
+                    <View
+                      style={[
+                        styles.stepDot,
+                        {
+                          backgroundColor: isSelected ? theme.colors.primary : theme.colors.surfaceBorder,
+                          borderColor: isSelected ? theme.colors.primary : theme.colors.textMuted,
+                        },
+                      ]}
+                    >
+                      {isSelected && <View style={styles.stepInnerDot} />}
+                    </View>
+                    {index < STATUS_OPTIONS.length - 1 && (
+                      <View
+                        style={[
+                          styles.stepLine,
+                          { backgroundColor: isSelected ? theme.colors.primary : theme.colors.surfaceBorder },
+                        ]}
+                      />
+                    )}
+                  </View>
+
                   <Text
                     style={[
-                      styles.statusChipText,
-                      { color: isSelected ? '#FFFFFF' : theme.colors.textPrimary, fontWeight: isSelected ? '700' : '500' },
+                      styles.stepLabel,
+                      {
+                        color: isSelected ? theme.colors.primary : theme.colors.textSecondary,
+                        fontWeight: isSelected ? '700' : '500',
+                      },
                     ]}
                   >
                     {statusOpt}
@@ -361,67 +451,331 @@ export const IncidentDetailScreen: React.FC<IncidentDetailScreenProps> = ({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 32 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 36 },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   loadingText: { marginTop: 12, fontSize: 14, fontWeight: '500' },
-  iconCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  iconCircleText: { fontSize: 24 },
-  errorTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
-  errorSubtitle: { fontSize: 13, textAlign: 'center', marginBottom: 16, maxWidth: 280 },
-  navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  backButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  backButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
   backButtonText: { fontSize: 13, fontWeight: '600' },
-  navIdText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  heroCard: { padding: 18, borderRadius: 14, borderWidth: 1, borderLeftWidth: 4, marginBottom: 14 },
-  heroTopRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  severityTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  severityTagText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
-  statusTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1 },
-  statusTagText: { fontSize: 10, fontWeight: '700' },
-  heroTitle: { fontSize: 20, fontWeight: '800', lineHeight: 26, marginBottom: 6 },
-  heroSummary: { fontSize: 14, lineHeight: 20, marginBottom: 14 },
-  heroMetaRow: { paddingTop: 10, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between' },
-  heroMetaText: { fontSize: 11, fontWeight: '500' },
-  card: { padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 14 },
-  cardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  locationContainer: { padding: 10, borderRadius: 8, backgroundColor: '#00000005' },
-  locationCoords: { fontSize: 14, fontWeight: '700' },
-  locationMeta: { fontSize: 12, marginTop: 2 },
-  confidenceLevelText: { fontSize: 12, fontWeight: '800' },
-  progressTrack: { height: 8, borderRadius: 4, width: '100%', marginBottom: 14, overflow: 'hidden' },
-  fillBar: { height: '100%', borderRadius: 4 },
-  metricsGrid: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  gridCell: { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center' },
-  gridCellLabel: { fontSize: 10, textAlign: 'center', marginBottom: 2 },
-  gridCellValue: { fontSize: 16, fontWeight: '800' },
-  rationaleBox: { padding: 10, borderRadius: 8, marginBottom: 12 },
-  rationaleTitle: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
-  rationaleText: { fontSize: 12, lineHeight: 16 },
-  disclaimerCallout: { padding: 10, borderRadius: 8, borderWidth: 1 },
-  disclaimerText: { fontSize: 11, fontWeight: '600', lineHeight: 15 },
-  bodyText: { fontSize: 13, lineHeight: 18 },
-  cleanRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checkIcon: { fontSize: 14, color: '#10B981', fontWeight: '800' },
-  contradictionBanner: { padding: 12, borderRadius: 8, borderWidth: 1 },
-  contradictionTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
-  contradictionSubtext: { fontSize: 12, lineHeight: 16 },
-  smallBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
-  smallBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
-  evidenceListContainer: { marginTop: 10, gap: 10 },
-  evidenceTile: { flexDirection: 'row', padding: 10, borderRadius: 8, borderWidth: 1, alignItems: 'center', gap: 10 },
-  mediaPlaceholder: { width: 40, height: 40, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-  mediaPlaceholderIcon: { fontSize: 18 },
-  evidenceDetails: { flex: 1 },
-  evidenceTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
-  evidenceTypeTag: { fontSize: 11, fontWeight: '700' },
-  evidenceStatus: { fontSize: 10, fontWeight: '700' },
-  evidenceUriText: { fontSize: 12, fontWeight: '600' },
-  evidenceMetaText: { fontSize: 10 },
-  statusChipGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  statusChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-  statusChipText: { fontSize: 12 },
-  button: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
+  navMeta: { flexShrink: 1, marginLeft: 12 },
+  navIdText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
+  heroSurface: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    marginBottom: 16,
+  },
+  heroEyebrowRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  heroCategoryGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  eyebrowText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  heroBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 26,
+    marginBottom: 8,
+  },
+  heroSummary: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  heroMetaRow: {
+    paddingTop: 10,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metaInlineItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaInlineText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  intelligenceSurface: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  intelligenceHeaderRow: {
+    marginBottom: 10,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  scoreValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  confidenceMeterTrack: {
+    height: 8,
+    borderRadius: 4,
+    width: '100%',
+    marginVertical: 10,
+    overflow: 'hidden',
+  },
+  confidenceMeterFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  sourceSubtext: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 12,
+  },
+  metricsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  metricBarCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  metricBarValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  metricBarLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  metricBarDivider: {
+    width: 1,
+    height: 20,
+  },
+  rationaleContainer: {
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  rationaleTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  rationaleBody: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  disclaimerBox: {
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  disclaimerText: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 15,
+  },
+  sectionDividerBlock: {
+    paddingTop: 14,
+    marginBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#00000010',
+  },
+  locationContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  coordsText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  accuracyText: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  secondaryBodyText: {
+    fontSize: 13,
+    marginTop: 4,
+  },
+  conflictCleanRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  conflictCleanText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  conflictBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 6,
+  },
+  conflictTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  conflictBody: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  sectionHeaderWithAction: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    flexShrink: 1,
+  },
+  attachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    gap: 4,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  attachBtnText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  evidenceRowsList: {
+    marginTop: 8,
+    gap: 8,
+  },
+  evidenceRowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  evidenceItemTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  evidenceType: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  evidenceState: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  evidenceUri: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  timelineContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  timelineStep: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  stepIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  stepDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  stepInnerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+  },
+  stepLine: {
+    position: 'absolute',
+    left: '50%',
+    right: '-50%',
+    height: 2,
+    top: 7,
+    zIndex: 1,
+  },
+  stepLabel: {
+    fontSize: 10,
+    textAlign: 'center',
+  },
+  button: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
 });
-

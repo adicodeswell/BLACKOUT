@@ -15,6 +15,9 @@ import { useTheme } from '../theme/ThemeContext';
 import { useEmergencyReport } from '../hooks/useEmergencyReport';
 import { RuleBasedAIEngine } from '../services/RuleBasedAIEngine';
 import { AISuggestionCard } from '../components/AISuggestionCard';
+import { SeverityBadge } from '../components/SeverityBadge';
+import { StatusPill } from '../components/StatusPill';
+import { PrimaryButton } from '../components/PrimaryButton';
 import type { ReportCategory, Severity } from '../contracts/data/EmergencyReport';
 import type { EmergencyReportService } from '../services/EmergencyReportService';
 import type { ReportClassification } from '../contracts/ai/AIContracts';
@@ -69,6 +72,8 @@ export const EmergencyReportScreen: React.FC<EmergencyReportScreenProps> = ({
     resetForm,
   } = useEmergencyReport(reportService);
 
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+
   const aiEngine = useMemo(() => new RuleBasedAIEngine(), []);
   const [aiSuggestion, setAiSuggestion] = useState<ReportClassification | null>(null);
   const [dismissedAi, setDismissedAi] = useState(false);
@@ -117,6 +122,16 @@ export const EmergencyReportScreen: React.FC<EmergencyReportScreenProps> = ({
     }
   };
 
+  const handleStep1Next = () => {
+    if (!category) return;
+    setWizardStep(2);
+  };
+
+  const handleStep2Next = () => {
+    if (!description || description.trim().length < 5) return;
+    setWizardStep(3);
+  };
+
   const isSubmitting = submissionState.status === 'SUBMITTING';
   const isSavedLocally = submissionState.status === 'LOCAL_SAVED';
   const hasSubmissionError = submissionState.status === 'ERROR';
@@ -135,46 +150,94 @@ export const EmergencyReportScreen: React.FC<EmergencyReportScreenProps> = ({
               style={[styles.backButton, { borderColor: theme.colors.surfaceBorder }]}
               activeOpacity={0.7}
             >
-              <Text style={[styles.backButtonText, { color: theme.colors.textPrimary }]}>← Back</Text>
+              <Text style={[styles.backButtonText, { color: theme.colors.primary }]}>← Back</Text>
             </TouchableOpacity>
           )}
           <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]}>Report Emergency</Text>
         </View>
 
-        {/* Local Save Success Banner */}
+        {/* 3-Step Wizard Visual Progress Bar */}
+        {!isSavedLocally && (
+          <View style={[styles.progressCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+            <View style={styles.progressRow}>
+              <TouchableOpacity
+                style={[
+                  styles.stepBadge,
+                  wizardStep === 1 && { backgroundColor: theme.colors.primary },
+                  category ? styles.stepBadgeCompleted : null,
+                ]}
+                onPress={() => setWizardStep(1)}
+              >
+                <Text style={styles.stepBadgeText}>{category ? '✓ 01' : '01'}</Text>
+              </TouchableOpacity>
+              <Text style={[styles.stepLabel, { color: wizardStep === 1 ? theme.colors.textPrimary : theme.colors.textSecondary }]}>
+                Category
+              </Text>
+
+              <View style={[styles.progressLine, { backgroundColor: wizardStep >= 2 ? theme.colors.primary : theme.colors.surfaceBorder }]} />
+
+              <TouchableOpacity
+                style={[
+                  styles.stepBadge,
+                  wizardStep === 2 && { backgroundColor: theme.colors.primary },
+                  description && description.trim().length >= 5 ? styles.stepBadgeCompleted : null,
+                ]}
+                onPress={() => category && setWizardStep(2)}
+              >
+                <Text style={styles.stepBadgeText}>{description && description.trim().length >= 5 ? '✓ 02' : '02'}</Text>
+              </TouchableOpacity>
+              <Text style={[styles.stepLabel, { color: wizardStep === 2 ? theme.colors.textPrimary : theme.colors.textSecondary }]}>
+                Details
+              </Text>
+
+              <View style={[styles.progressLine, { backgroundColor: wizardStep === 3 ? theme.colors.primary : theme.colors.surfaceBorder }]} />
+
+              <TouchableOpacity
+                style={[styles.stepBadge, wizardStep === 3 && { backgroundColor: theme.colors.primary }]}
+                onPress={() => category && description && setWizardStep(3)}
+              >
+                <Text style={styles.stepBadgeText}>03</Text>
+              </TouchableOpacity>
+              <Text style={[styles.stepLabel, { color: wizardStep === 3 ? theme.colors.textPrimary : theme.colors.textSecondary }]}>
+                Review
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Local Save Success Banner / Modal Card */}
         {isSavedLocally && (
           <View style={[styles.banner, styles.successBanner]}>
             <Text style={styles.successBannerTitle}>✓ Report Saved Locally</Text>
             <Text style={styles.bannerSubtitle}>
-              Your report is persisted on this device.
+              Your emergency report has been persisted to local Room SQLite storage.
             </Text>
 
             {submissionState.broadcastAttempted && (
               <View style={styles.networkStatusBox}>
                 {submissionState.deliveryHandle ? (
                   <Text style={styles.networkStatusText}>
-                    📡 P2P Broadcast Accepted (ID: {submissionState.deliveryHandle.message_id.slice(0, 8)}...)
+                    📡 P2P Mesh Broadcast Accepted (ID: {submissionState.deliveryHandle.message_id.slice(0, 8)}...)
                   </Text>
                 ) : submissionState.networkError ? (
                   <Text style={styles.networkErrorText}>
-                    ⚠️ Broadcast Pending: {submissionState.networkError.message} (Will retry when peers are nearby)
+                    ⚠️ Broadcast Pending: {submissionState.networkError.message} (Will retry automatically when radio peers connect)
                   </Text>
                 ) : (
-                  <Text style={styles.networkStatusText}>📡 Broadcasting to nearby peers...</Text>
+                  <Text style={styles.networkStatusText}>📡 Broadcasting to nearby mesh nodes...</Text>
                 )}
               </View>
             )}
 
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: theme.colors.primary, marginTop: 12 }]}
+            <PrimaryButton
+              title="Submit Another Report"
               onPress={() => {
                 resetForm();
+                setWizardStep(1);
                 setDismissedAi(false);
               }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.actionButtonText}>Submit Another Report</Text>
-            </TouchableOpacity>
+              style={{ marginTop: 16 }}
+            />
           </View>
         )}
 
@@ -189,223 +252,296 @@ export const EmergencyReportScreen: React.FC<EmergencyReportScreenProps> = ({
         {/* Form Container */}
         {!isSavedLocally && (
           <View style={styles.formContainer}>
-            {/* 1. Category Selection */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
-                1. Category <Text style={styles.requiredMark}>*</Text>
-              </Text>
-              {validationErrors.category && (
-                <Text style={styles.fieldErrorText}>{validationErrors.category}</Text>
-              )}
-              <View style={styles.chipGrid}>
-                {CATEGORIES.map((cat) => {
-                  const isSelected = category === cat.value;
-                  return (
-                    <TouchableOpacity
-                      key={cat.value}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: isSelected ? theme.colors.primary : theme.colors.surface,
-                          borderColor: isSelected ? theme.colors.primary : theme.colors.surfaceBorder,
-                        },
-                      ]}
-                      onPress={() => setCategory(cat.value)}
-                      activeOpacity={0.8}
-                    >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          { color: isSelected ? '#FFFFFF' : theme.colors.textPrimary },
-                        ]}
-                      >
-                        {cat.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* 2. Severity Selection */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>2. Severity</Text>
-              <View style={styles.chipGrid}>
-                {SEVERITIES.map((sev) => {
-                  const isSelected = severity === sev.value;
-                  const isCritical = sev.value === 'CRITICAL';
-                  return (
-                    <TouchableOpacity
-                      key={sev.value}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: isSelected
-                            ? isCritical
-                              ? theme.colors.primaryDanger
-                              : theme.colors.primary
-                            : theme.colors.surface,
-                          borderColor: isSelected
-                            ? isCritical
-                              ? theme.colors.primaryDanger
-                              : theme.colors.primary
-                            : theme.colors.surfaceBorder,
-                        },
-                      ]}
-                      onPress={() => setSeverity(sev.value)}
-                      activeOpacity={0.8}
-                    >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          { color: isSelected ? '#FFFFFF' : theme.colors.textPrimary },
-                        ]}
-                      >
-                        {sev.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* 3. Description Input */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
-                3. Description <Text style={styles.requiredMark}>*</Text>
-              </Text>
-              {validationErrors.description && (
-                <Text style={styles.fieldErrorText}>{validationErrors.description}</Text>
-              )}
-              <TextInput
-                style={[
-                  styles.textArea,
-                  {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: validationErrors.description
-                      ? theme.colors.primaryDanger
-                      : theme.colors.surfaceBorder,
-                    color: theme.colors.textPrimary,
-                  },
-                ]}
-                placeholder="Describe what happened, required assistance, or immediate hazards..."
-                placeholderTextColor={theme.colors.textSecondary}
-                multiline
-                numberOfLines={4}
-                value={description}
-                onChangeText={handleDescriptionChange}
-                textAlignVertical="top"
-              />
-
-              {/* Advisory AI Suggestion Card */}
-              {aiSuggestion && (
-                <AISuggestionCard
-                  suggestion={aiSuggestion}
-                  onApply={handleApplyAiSuggestion}
-                  onDismiss={handleDismissAiSuggestion}
-                />
-              )}
-            </View>
-
-            {/* 4. Location Section */}
-            <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-              <View style={styles.switchRow}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 0 }]}>
-                  📍 Attach Current Location
+            {/* STEP 1: CATEGORY */}
+            {wizardStep === 1 && (
+              <View style={styles.section}>
+                <Text style={[styles.stepTitle, { color: theme.colors.textPrimary }]}>
+                  Step 1: Select Emergency Category <Text style={styles.requiredMark}>*</Text>
                 </Text>
-                <Switch
-                  value={attachLocation}
-                  onValueChange={setAttachLocation}
-                  thumbColor={attachLocation ? theme.colors.primary : theme.colors.textSecondary}
+                <Text style={[styles.stepHint, { color: theme.colors.textSecondary }]}>
+                  Choose the primary nature of the emergency situation.
+                </Text>
+
+                {validationErrors.category && (
+                  <Text style={styles.fieldErrorText}>{validationErrors.category}</Text>
+                )}
+
+                <View style={styles.chipGrid}>
+                  {CATEGORIES.map((cat) => {
+                    const isSelected = category === cat.value;
+                    return (
+                      <TouchableOpacity
+                        key={cat.value}
+                        style={[
+                          styles.categoryCard,
+                          {
+                            backgroundColor: isSelected ? theme.colors.primary : theme.colors.surface,
+                            borderColor: isSelected ? theme.colors.primary : theme.colors.surfaceBorder,
+                          },
+                        ]}
+                        onPress={() => setCategory(cat.value)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.categoryText, { color: isSelected ? '#FFFFFF' : theme.colors.textPrimary }]}>
+                          {cat.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <PrimaryButton
+                  title="Continue to Details →"
+                  onPress={handleStep1Next}
+                  disabled={!category}
+                  style={{ marginTop: 24 }}
                 />
               </View>
+            )}
 
-              {attachLocation && (
-                <View style={styles.locationStatusContainer}>
-                  {locationState.status === 'LOADING' && (
-                    <View style={styles.row}>
-                      <ActivityIndicator size="small" color={theme.colors.primary} />
-                      <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginLeft: 8 }]}>
-                        Acquiring GPS Fix...
-                      </Text>
-                    </View>
+            {/* STEP 2: DETAILS */}
+            {wizardStep === 2 && (
+              <View style={styles.section}>
+                <Text style={[styles.stepTitle, { color: theme.colors.textPrimary }]}>
+                  Step 2: Emergency Details & Location <Text style={styles.requiredMark}>*</Text>
+                </Text>
+                <Text style={[styles.stepHint, { color: theme.colors.textSecondary }]}>
+                  Describe the emergency, set severity, and attach optional location.
+                </Text>
+
+                {/* Description Input */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textPrimary }]}>
+                    Description <Text style={styles.requiredMark}>*</Text>
+                  </Text>
+                  {validationErrors.description && (
+                    <Text style={styles.fieldErrorText}>{validationErrors.description}</Text>
                   )}
+                  <TextInput
+                    style={[
+                      styles.textArea,
+                      {
+                        backgroundColor: theme.colors.surface,
+                        borderColor: validationErrors.description
+                          ? theme.colors.primaryDanger
+                          : theme.colors.surfaceBorder,
+                        color: theme.colors.textPrimary,
+                      },
+                    ]}
+                    placeholder="Describe what happened, required assistance, or immediate hazards..."
+                    placeholderTextColor={theme.colors.textSecondary}
+                    multiline
+                    numberOfLines={4}
+                    value={description}
+                    onChangeText={handleDescriptionChange}
+                    textAlignVertical="top"
+                  />
 
-                  {locationState.status === 'SUCCESS' && locationState.location && (
-                    <Text style={[styles.statusText, { color: theme.colors.textPrimary }]}>
-                      Lat: {locationState.location.latitude.toFixed(4)}, Long:{' '}
-                      {locationState.location.longitude.toFixed(4)}
-                      {locationState.location.accuracy_m ? ` (±${locationState.location.accuracy_m}m)` : ''}
-                    </Text>
-                  )}
-
-                  {locationState.status === 'ERROR' && locationState.error && (
-                    <Text style={styles.fieldErrorText}>
-                      Location warning: {locationState.error.message} (Report can still be submitted)
-                    </Text>
-                  )}
-
-                  {locationState.status === 'IDLE' && (
-                    <Text style={[styles.statusText, { color: theme.colors.textSecondary }]}>
-                      Location will be requested upon submission.
-                    </Text>
+                  {/* Advisory AI Suggestion Card */}
+                  {aiSuggestion && (
+                    <AISuggestionCard
+                      suggestion={aiSuggestion}
+                      onApply={handleApplyAiSuggestion}
+                      onDismiss={handleDismissAiSuggestion}
+                    />
                   )}
                 </View>
-              )}
-            </View>
 
-            {/* 5. Evidence Section */}
-            <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-              <View style={styles.switchRow}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 0 }]}>
-                  📷 Evidence Metadata
-                </Text>
-                <TouchableOpacity
-                  style={[styles.smallAddBtn, { backgroundColor: theme.colors.primary }]}
-                  onPress={() => addEvidenceMetadata({ type: 'TEXT', local_uri: `Note: ${description.slice(0, 30)}...` })}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.smallAddBtnText}>+ Add Field Note</Text>
-                </TouchableOpacity>
-              </View>
+                {/* Severity Selector */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textPrimary }]}>Assigned Severity</Text>
+                  <View style={styles.chipGrid}>
+                    {SEVERITIES.map((sev) => {
+                      const isSelected = severity === sev.value;
+                      const isCritical = sev.value === 'CRITICAL';
+                      return (
+                        <TouchableOpacity
+                          key={sev.value}
+                          style={[
+                            styles.severityChip,
+                            {
+                              backgroundColor: isSelected
+                                ? isCritical
+                                  ? theme.colors.primaryDanger
+                                  : theme.colors.primary
+                                : theme.colors.surface,
+                              borderColor: isSelected
+                                ? isCritical
+                                  ? theme.colors.primaryDanger
+                                  : theme.colors.primary
+                                : theme.colors.surfaceBorder,
+                            },
+                          ]}
+                          onPress={() => setSeverity(sev.value)}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={[
+                              styles.chipText,
+                              { color: isSelected ? '#FFFFFF' : theme.colors.textPrimary },
+                            ]}
+                          >
+                            {sev.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
 
-              {evidenceItems.length === 0 ? (
-                <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginTop: 8 }]}>
-                  No evidence metadata attached.
-                </Text>
-              ) : (
-                evidenceItems.map((item, idx) => (
-                  <View key={idx} style={styles.evidenceRow}>
-                    <Text style={[styles.statusText, { color: theme.colors.textPrimary }]}>
-                      [{item.type}] {item.local_uri}
+                {/* Location Attachment */}
+                <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+                  <View style={styles.switchRow}>
+                    <Text style={[styles.inputLabel, { color: theme.colors.textPrimary, marginBottom: 0 }]}>
+                      📍 Attach Location
                     </Text>
-                    <TouchableOpacity onPress={() => removeEvidenceMetadata(idx)}>
-                      <Text style={styles.removeText}>Remove</Text>
+                    <Switch
+                      value={attachLocation}
+                      onValueChange={setAttachLocation}
+                      thumbColor={attachLocation ? theme.colors.primary : theme.colors.textSecondary}
+                    />
+                  </View>
+
+                  {attachLocation && (
+                    <View style={styles.locationStatusContainer}>
+                      {locationState.status === 'LOADING' && (
+                        <View style={styles.row}>
+                          <ActivityIndicator size="small" color={theme.colors.primary} />
+                          <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginLeft: 8 }]}>
+                            Acquiring GPS Fix...
+                          </Text>
+                        </View>
+                      )}
+
+                      {locationState.status === 'SUCCESS' && locationState.location && (
+                        <Text style={[styles.statusText, { color: theme.colors.textPrimary }]}>
+                          Lat: {locationState.location.latitude.toFixed(4)}, Long:{' '}
+                          {locationState.location.longitude.toFixed(4)}
+                          {locationState.location.accuracy_m ? ` (±${locationState.location.accuracy_m}m)` : ''}
+                        </Text>
+                      )}
+
+                      {locationState.status === 'ERROR' && locationState.error && (
+                        <Text style={styles.fieldErrorText}>
+                          Location warning: {locationState.error.message} (Report will submit with default location)
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {/* Evidence Metadata Section */}
+                <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+                  <View style={styles.switchRow}>
+                    <Text style={[styles.inputLabel, { color: theme.colors.textPrimary, marginBottom: 0 }]}>
+                      📷 Field Note Metadata
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.smallAddBtn, { backgroundColor: theme.colors.primary }]}
+                      onPress={() => addEvidenceMetadata({ type: 'TEXT', local_uri: `Field note: ${description.slice(0, 30)}...` })}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.smallAddBtnText}>+ Add Note</Text>
                     </TouchableOpacity>
                   </View>
-                ))
-              )}
-            </View>
 
-            {/* 6. Review & Submit Button */}
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                {
-                  backgroundColor: severity === 'CRITICAL' ? theme.colors.primaryDanger : theme.colors.primary,
-                  opacity: isSubmitting ? 0.6 : 1,
-                },
-              ]}
-              onPress={submitReport}
-              disabled={isSubmitting}
-              activeOpacity={0.8}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.submitButtonText}>Submit Emergency Report</Text>
-              )}
-            </TouchableOpacity>
+                  {evidenceItems.length === 0 ? (
+                    <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginTop: 8 }]}>
+                      No field notes attached.
+                    </Text>
+                  ) : (
+                    evidenceItems.map((item, idx) => (
+                      <View key={idx} style={styles.evidenceRow}>
+                        <Text style={[styles.statusText, { color: theme.colors.textPrimary }]}>
+                          [{item.type}] {item.local_uri}
+                        </Text>
+                        <TouchableOpacity onPress={() => removeEvidenceMetadata(idx)}>
+                          <Text style={styles.removeText}>Remove</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))
+                  )}
+                </View>
+
+                <View style={styles.buttonRow}>
+                  <PrimaryButton
+                    title="← Category"
+                    variant="outline"
+                    onPress={() => setWizardStep(1)}
+                    style={{ flex: 1, marginRight: 8 }}
+                  />
+                  <PrimaryButton
+                    title="Proceed to Review →"
+                    onPress={handleStep2Next}
+                    disabled={!description || description.trim().length < 5}
+                    style={{ flex: 1, marginLeft: 8 }}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* STEP 3: REVIEW & SUBMISSION */}
+            {wizardStep === 3 && (
+              <View style={styles.section}>
+                <Text style={[styles.stepTitle, { color: theme.colors.textPrimary }]}>
+                  Step 3: Final Review & Mesh Broadcast
+                </Text>
+                <Text style={[styles.stepHint, { color: theme.colors.textSecondary }]}>
+                  Verify details before persisting locally and broadcasting to nearby mesh nodes.
+                </Text>
+
+                {/* Review Card */}
+                <View style={[styles.reviewCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
+                  <View style={styles.reviewHeader}>
+                    <Text style={[styles.reviewCategory, { color: theme.colors.textPrimary }]}>
+                      {CATEGORIES.find((c) => c.value === category)?.label || category}
+                    </Text>
+                    <SeverityBadge severity={severity} />
+                  </View>
+
+                  <Text style={[styles.reviewLabel, { color: theme.colors.textSecondary }]}>Description:</Text>
+                  <Text style={[styles.reviewValue, { color: theme.colors.textPrimary }]}>{description}</Text>
+
+                  <Text style={[styles.reviewLabel, { color: theme.colors.textSecondary }]}>Location Status:</Text>
+                  <Text style={[styles.reviewValue, { color: theme.colors.textPrimary }]}>
+                    {attachLocation
+                      ? locationState.location
+                        ? `Lat: ${locationState.location.latitude.toFixed(4)}, Long: ${locationState.location.longitude.toFixed(4)}`
+                        : 'Attached (Acquiring on submit)'
+                      : 'Not attached'}
+                  </Text>
+
+                  <Text style={[styles.reviewLabel, { color: theme.colors.textSecondary }]}>Attached Evidence:</Text>
+                  <Text style={[styles.reviewValue, { color: theme.colors.textPrimary }]}>
+                    {evidenceItems.length > 0 ? `${evidenceItems.length} field note item(s)` : 'None'}
+                  </Text>
+                </View>
+
+                {/* Operational Notice */}
+                <View style={[styles.noticeCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder }]}>
+                  <Text style={[styles.noticeText, { color: theme.colors.textSecondary }]}>
+                    🔒 <Text style={{ fontWeight: '700' }}>Local-First Guarantee:</Text> Submitting will save your report directly to local Android Room SQLite disk storage first. P2P radio broadcast on Port 18888 will follow automatically when mesh peers are available.
+                  </Text>
+                </View>
+
+                <View style={styles.buttonRow}>
+                  <PrimaryButton
+                    title="← Edit Details"
+                    variant="outline"
+                    onPress={() => setWizardStep(2)}
+                    style={{ flex: 1, marginRight: 8 }}
+                  />
+                  <PrimaryButton
+                    title={isSubmitting ? 'Submitting...' : 'BROADCAST EMERGENCY REPORT'}
+                    variant={severity === 'CRITICAL' ? 'danger' : 'primary'}
+                    onPress={submitReport}
+                    isLoading={isSubmitting}
+                    disabled={isSubmitting}
+                    style={{ flex: 2, marginLeft: 8 }}
+                  />
+                </View>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -441,22 +577,66 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
   },
+  progressCard: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stepBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#6C757D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBadgeCompleted: {
+    backgroundColor: '#10B981',
+  },
+  stepBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  stepLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginHorizontal: 4,
+  },
+  progressLine: {
+    flex: 1,
+    height: 2,
+    marginHorizontal: 4,
+  },
   formContainer: {
-    marginTop: 8,
+    marginTop: 4,
   },
   section: {
     marginBottom: 20,
   },
-  sectionCard: {
-    padding: 16,
-    borderRadius: 10,
-    borderWidth: 1,
+  stepTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  stepHint: {
+    fontSize: 13,
+    marginBottom: 16,
+  },
+  inputGroup: {
     marginBottom: 20,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
   requiredMark: {
     color: '#DC3545',
@@ -471,7 +651,19 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  chip: {
+  categoryCard: {
+    width: '48%',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  categoryText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  severityChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
@@ -479,29 +671,25 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   textArea: {
     borderRadius: 8,
     borderWidth: 1,
     padding: 12,
-    minHeight: 100,
+    minHeight: 110,
     fontSize: 14,
+  },
+  sectionCard: {
+    padding: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 20,
   },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  smallAddBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  smallAddBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
   },
   locationStatusContainer: {
     marginTop: 10,
@@ -512,6 +700,16 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 13,
+  },
+  smallAddBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  smallAddBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   evidenceRow: {
     flexDirection: 'row',
@@ -524,21 +722,51 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  submitButton: {
-    paddingVertical: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
+  buttonRow: {
+    flexDirection: 'row',
+    marginTop: 16,
   },
-  submitButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  reviewCard: {
+    padding: 18,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  reviewCategory: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  reviewLabel: {
+    fontSize: 11,
     fontWeight: '700',
+    textTransform: 'uppercase',
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  reviewValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  noticeCard: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  noticeText: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   banner: {
-    padding: 16,
-    borderRadius: 10,
+    padding: 18,
+    borderRadius: 12,
     marginBottom: 16,
   },
   successBanner: {
@@ -549,7 +777,7 @@ const styles = StyleSheet.create({
   successBannerTitle: {
     color: '#198754',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 4,
   },
   errorBanner: {
@@ -560,7 +788,7 @@ const styles = StyleSheet.create({
   errorBannerTitle: {
     color: '#DC3545',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 4,
   },
   bannerSubtitle: {
@@ -568,29 +796,19 @@ const styles = StyleSheet.create({
     color: '#495057',
   },
   networkStatusBox: {
-    marginTop: 10,
-    padding: 10,
+    marginTop: 12,
+    padding: 12,
     backgroundColor: '#FFFFFF60',
-    borderRadius: 6,
+    borderRadius: 8,
   },
   networkStatusText: {
     fontSize: 13,
     color: '#0D6EFD',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   networkErrorText: {
     fontSize: 13,
     color: '#FD7E14',
-    fontWeight: '500',
-  },
-  actionButton: {
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
     fontWeight: '600',
   },
 });

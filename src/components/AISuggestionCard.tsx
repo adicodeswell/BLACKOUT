@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { NavIcon } from './NavIcon';
 import type { ReportClassification } from '../contracts/ai/AIContracts';
 
 interface AISuggestionCardProps {
@@ -46,7 +47,7 @@ export const AISuggestionCard: React.FC<AISuggestionCardProps> = ({
       {/* Header Banner */}
       <View style={styles.headerRow}>
         <View style={styles.badgeRow}>
-          <Text style={styles.aiIcon}>🤖</Text>
+          <NavIcon name="INFO" size={14} color={theme.colors.primary} />
           <Text style={[styles.headerTitle, { color: theme.colors.primary }]}>
             AI ADVISORY SUGGESTION
           </Text>
@@ -82,7 +83,7 @@ export const AISuggestionCard: React.FC<AISuggestionCardProps> = ({
       {/* Rationale Explanation */}
       {suggestion.rationale ? (
         <Text style={[styles.rationaleText, { color: theme.colors.textSecondary }]}>
-          💡 {suggestion.rationale}
+          Rationale: {suggestion.rationale}
         </Text>
       ) : null}
 
@@ -93,7 +94,8 @@ export const AISuggestionCard: React.FC<AISuggestionCardProps> = ({
           onPress={() => onApply(suggestion.category, suggestion.severity)}
           activeOpacity={0.8}
         >
-          <Text style={styles.applyButtonText}>✓ Apply Suggestion</Text>
+          <NavIcon name="CHECK" size={12} color="#FFFFFF" />
+          <Text style={styles.applyButtonText}>Apply Suggestion</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -127,10 +129,7 @@ const styles = StyleSheet.create({
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  aiIcon: {
-    fontSize: 16,
-    marginRight: 6,
+    gap: 6,
   },
   headerTitle: {
     fontSize: 12,
@@ -194,10 +193,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   applyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
     marginRight: 8,
+    minHeight: 38,
   },
   applyButtonText: {
     color: '#FFFFFF',

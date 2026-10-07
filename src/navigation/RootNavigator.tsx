@@ -16,6 +16,7 @@ import { AddResourceScreen } from '../screens/AddResourceScreen';
 import { PeopleScreen } from '../screens/PeopleScreen';
 import { PeerDetailScreen } from '../screens/PeerDetailScreen';
 import { DirectMessageScreen } from '../screens/DirectMessageScreen';
+import { NavIcon, MoreMenuModal } from '../components';
 import type { EmergencyReportService } from '../services/EmergencyReportService';
 import type { IncidentService } from '../services/IncidentService';
 import type { ResourceService } from '../services/ResourceService';
@@ -181,7 +182,12 @@ export const RootNavigator: React.FC<RootNavigatorProps> = ({
         return (
           <HomeScreen
             onReportEmergency={() => navigateTo('EmergencyReport')}
+            onNavigateToMap={() => navigateTo('Map')}
+            onNavigateToAlerts={() => navigateTo('Alerts')}
+            onNavigateToResources={() => navigateTo('Resources')}
+            onNavigateToPeople={() => navigateTo('People')}
             networkEngine={networkAdapter}
+            incidentService={incidentService}
           />
         );
       case 'Map':
@@ -216,19 +222,52 @@ export const RootNavigator: React.FC<RootNavigatorProps> = ({
           />
         );
       case 'Profile':
-        return <ProfileScreen />;
+        return (
+          <ProfileScreen
+            networkEngine={networkAdapter}
+            onNavigateToMesh={() => navigateTo('People')}
+            onNavigateToSettings={() => navigateTo('Settings')}
+          />
+        );
       case 'Settings':
-        return <SettingsScreen />;
+        return (
+          <SettingsScreen
+            onNavigateToProfile={() => navigateTo('Profile')}
+            onNavigateToMesh={() => navigateTo('People')}
+          />
+        );
       default:
         return <HomeScreen onReportEmergency={() => navigateTo('EmergencyReport')} />;
     }
   };
 
-  const tabs: TabName[] = ['Home', 'Map', 'Alerts', 'Resources', 'People', 'Profile', 'Settings'];
+  const primaryTabs: Array<'Home' | 'Map' | 'Alerts' | 'People' | 'More'> = [
+    'Home',
+    'Map',
+    'Alerts',
+    'People',
+    'More',
+  ];
+
+  const [isMoreMenuVisible, setIsMoreMenuVisible] = useState(false);
+
+  const isStackOpen =
+    currentScreen === 'EmergencyReport' ||
+    currentScreen === 'IncidentDetail' ||
+    currentScreen === 'ResourceDetail' ||
+    currentScreen === 'AddResource' ||
+    currentScreen === 'PeerDetail' ||
+    currentScreen === 'DirectMessage';
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}>
       <View style={styles.screenContainer}>{renderActiveScreen()}</View>
+
+      <MoreMenuModal
+        visible={isMoreMenuVisible}
+        onClose={() => setIsMoreMenuVisible(false)}
+        onSelectDestination={(dest) => navigateTo(dest)}
+      />
 
       <View
         style={[
@@ -237,46 +276,46 @@ export const RootNavigator: React.FC<RootNavigatorProps> = ({
             backgroundColor: theme.colors.tabBarBackground,
             borderTopColor: theme.colors.tabBarBorder,
             paddingBottom: insets.bottom,
-            height: 56 + insets.bottom,
+            height: 60 + insets.bottom,
           },
         ]}
       >
-        {tabs.map((tab) => {
-          const isActive =
-            currentScreen !== 'EmergencyReport' &&
-            currentScreen !== 'IncidentDetail' &&
-            currentScreen !== 'ResourceDetail' &&
-            currentScreen !== 'AddResource' &&
-            currentScreen !== 'PeerDetail' &&
-            currentScreen !== 'DirectMessage' &&
-            activeTab === tab;
-
-          const getTabIcon = (name: TabName) => {
-            switch (name) {
-              case 'Home': return '🏠';
-              case 'Map': return '🗺️';
-              case 'Alerts': return '🚨';
-              case 'Resources': return '📦';
-              case 'People': return '👥';
-              case 'Profile': return '👤';
-              case 'Settings': return '⚙️';
+        {primaryTabs.map((tab) => {
+          let isActive = false;
+          if (!isStackOpen) {
+            if (tab === 'More') {
+              isActive = activeTab === 'Resources' || activeTab === 'Profile' || activeTab === 'Settings';
+            } else {
+              isActive = activeTab === tab;
             }
-          };
+          }
+
+          const iconColor = isActive ? theme.colors.tabBarActive : theme.colors.tabBarInactive;
 
           return (
             <TouchableOpacity
               key={tab}
-              style={[styles.tabItem, isActive && { backgroundColor: `${theme.colors.tabBarActive}15`, borderRadius: theme.radius.md }]}
-              onPress={() => navigateTo(tab)}
+              style={[
+                styles.tabItem,
+                isActive && { backgroundColor: `${theme.colors.tabBarActive}15`, borderRadius: theme.radius.md },
+              ]}
+              onPress={() => {
+                if (tab === 'More') {
+                  setIsMoreMenuVisible(true);
+                } else {
+                  navigateTo(tab);
+                }
+              }}
               activeOpacity={0.7}
             >
-              <Text style={{ fontSize: 14, marginBottom: 2 }}>{getTabIcon(tab)}</Text>
+              <NavIcon name={tab as any} color={iconColor} size={20} />
               <Text
                 style={[
                   styles.tabLabel,
                   {
-                    color: isActive ? theme.colors.tabBarActive : theme.colors.tabBarInactive,
-                    fontWeight: isActive ? '700' : '400',
+                    color: iconColor,
+                    fontWeight: isActive ? '700' : '500',
+                    marginTop: 4,
                   },
                 ]}
               >

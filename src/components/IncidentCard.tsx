@@ -1,25 +1,29 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
-import type { IncidentDto, IncidentStatus } from '../contracts/data/IncidentDto';
-import type { Severity, VerificationLevel } from '../contracts/data/EmergencyReport';
+import { SeverityBadge } from './SeverityBadge';
+import { ConfidenceBadge } from './ConfidenceBadge';
+import { StatusPill } from './StatusPill';
+import { NavIcon, NavIconName } from './NavIcon';
+import type { IncidentDto } from '../contracts/data/IncidentDto';
+import type { Severity } from '../contracts/data/EmergencyReport';
 
 interface IncidentCardProps {
   incident: IncidentDto;
   onPress: () => void;
 }
 
-const CATEGORY_EMOJI_MAP: Record<string, string> = {
-  FIRE: '🔥',
-  FLOOD: '🌊',
-  MEDICAL: '🚑',
-  BUILDING_COLLAPSE: '🏗️',
-  TRAPPED_PERSON: '🆘',
-  BLOCKED_ROAD: '🚧',
-  FOOD: '🍲',
-  WATER: '💧',
-  SHELTER: '⛺',
-  OTHER: '⚠️',
+const CATEGORY_ICON_MAP: Record<string, NavIconName> = {
+  FIRE: 'FIRE',
+  FLOOD: 'FLOOD',
+  MEDICAL: 'MEDICAL',
+  BUILDING_COLLAPSE: 'WARNING',
+  TRAPPED_PERSON: 'WARNING',
+  BLOCKED_ROAD: 'BLOCKED_ROAD',
+  FOOD: 'Resources',
+  WATER: 'WATER',
+  SHELTER: 'SHELTER',
+  OTHER: 'OTHER',
 };
 
 export const IncidentCard: React.FC<IncidentCardProps> = ({ incident, onPress }) => {
@@ -41,31 +45,17 @@ export const IncidentCard: React.FC<IncidentCardProps> = ({ incident, onPress })
     }
   };
 
-  const getConfidenceColor = (level: VerificationLevel) => {
-    switch (level) {
-      case 'CONFIRMED':
-        return theme.colors.confidenceConfirmed;
-      case 'HIGH_CONFIDENCE':
-        return theme.colors.confidenceHigh;
-      case 'LIKELY':
-        return theme.colors.confidenceLikely;
-      case 'UNVERIFIED':
-      default:
-        return theme.colors.confidenceUnverified;
-    }
-  };
-
-  const getStatusColor = (status: IncidentStatus) => {
+  const getStatusVariant = (status: string) => {
     switch (status) {
       case 'OPEN':
-        return theme.colors.statusOpen;
+        return 'danger';
       case 'MONITORING':
-        return theme.colors.statusMonitoring;
+        return 'warning';
       case 'RESOLVED':
-        return theme.colors.statusResolved;
+        return 'active';
       case 'EXPIRED':
       default:
-        return theme.colors.statusExpired;
+        return 'neutral';
     }
   };
 
@@ -79,9 +69,7 @@ export const IncidentCard: React.FC<IncidentCardProps> = ({ incident, onPress })
   };
 
   const severityColor = getSeverityColor(incident.severity);
-  const confidenceColor = getConfidenceColor(incident.confidence_level);
-  const statusColor = getStatusColor(incident.status);
-  const emoji = CATEGORY_EMOJI_MAP[incident.category] || '⚠️';
+  const iconName = CATEGORY_ICON_MAP[incident.category] || 'OTHER';
 
   return (
     <TouchableOpacity
@@ -94,18 +82,13 @@ export const IncidentCard: React.FC<IncidentCardProps> = ({ incident, onPress })
         },
       ]}
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={0.7}
     >
       {/* 1. Header Row: Severity & Status Badges */}
       <View style={styles.headerRow}>
         <View style={styles.badgeGroup}>
-          <View style={[styles.severityBadge, { backgroundColor: severityColor }]}>
-            <Text style={styles.severityBadgeText}>{incident.severity}</Text>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '18', borderColor: statusColor }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.statusBadgeText, { color: statusColor }]}>{incident.status}</Text>
-          </View>
+          <SeverityBadge severity={incident.severity} size="small" />
+          <StatusPill label={incident.status} variant={getStatusVariant(incident.status)} showDot />
         </View>
 
         <Text style={[styles.timeText, { color: theme.colors.textSecondary }]}>
@@ -114,9 +97,13 @@ export const IncidentCard: React.FC<IncidentCardProps> = ({ incident, onPress })
       </View>
 
       {/* 2. Main Incident Title & Summary */}
-      <Text style={[styles.title, { color: theme.colors.textPrimary }]} numberOfLines={2}>
-        {emoji} {incident.title}
-      </Text>
+      <View style={styles.titleRow}>
+        <NavIcon name={iconName} color={severityColor} size={18} />
+        <Text style={[styles.title, { color: theme.colors.textPrimary }]} numberOfLines={2}>
+          {incident.title}
+        </Text>
+      </View>
+
       <Text style={[styles.summary, { color: theme.colors.textSecondary }]} numberOfLines={2}>
         {incident.summary}
       </Text>
@@ -124,8 +111,9 @@ export const IncidentCard: React.FC<IncidentCardProps> = ({ incident, onPress })
       {/* 3. Location Bar */}
       {incident.location && (
         <View style={styles.locationRow}>
+          <NavIcon name="LOCATION" color={theme.colors.textMuted} size={12} />
           <Text style={[styles.locationText, { color: theme.colors.textSecondary }]}>
-            📍 {incident.location.latitude.toFixed(4)}, {incident.location.longitude.toFixed(4)}
+            {incident.location.latitude.toFixed(4)}, {incident.location.longitude.toFixed(4)}
             {incident.location.accuracy_m ? ` (±${incident.location.accuracy_m}m)` : ''}
           </Text>
         </View>
@@ -134,23 +122,24 @@ export const IncidentCard: React.FC<IncidentCardProps> = ({ incident, onPress })
       {/* 4. Bottom Metrics Bar */}
       <View style={[styles.footerRow, { borderTopColor: theme.colors.surfaceBorder }]}>
         <View style={styles.confidencePill}>
-          <View style={[styles.confidenceDot, { backgroundColor: confidenceColor }]} />
-          <Text style={[styles.confidenceText, { color: theme.colors.textPrimary }]}>
-            {incident.confidence_level.replace('_', ' ')}
-          </Text>
+          <ConfidenceBadge level={incident.confidence_level} size="small" />
           <Text style={[styles.sourceCountText, { color: theme.colors.textSecondary }]}>
             ({incident.independent_source_count} {incident.independent_source_count === 1 ? 'src' : 'srcs'})
           </Text>
         </View>
 
         <View style={styles.metricsGroup}>
-          <Text style={[styles.metricItem, { color: theme.colors.textSecondary }]}>
-            📷 {incident.evidence_count}
-          </Text>
+          <View style={styles.iconMetricInline}>
+            <NavIcon name="EVIDENCE" color={theme.colors.textMuted} size={12} />
+            <Text style={[styles.metricItem, { color: theme.colors.textSecondary }]}>
+              {incident.evidence_count}
+            </Text>
+          </View>
           {incident.contradiction_count > 0 && (
-            <View style={[styles.contradictionBadge, { backgroundColor: theme.colors.severityCritical + '20' }]}>
-              <Text style={[styles.contradictionText, { color: theme.colors.severityCritical }]}>
-                ⚠️ {incident.contradiction_count}
+            <View style={[styles.contradictionBadge, { backgroundColor: theme.colors.dangerBg, borderColor: theme.colors.dangerBorder }]}>
+              <NavIcon name="WARNING" color={theme.colors.dangerText} size={10} />
+              <Text style={[styles.contradictionText, { color: theme.colors.dangerText }]}>
+                {incident.contradiction_count}
               </Text>
             </View>
           )}
@@ -167,6 +156,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderLeftWidth: 4,
     marginBottom: 12,
+    minHeight: 120,
   },
   headerRow: {
     flexDirection: 'row',
@@ -179,45 +169,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  severityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  severityBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 4,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
   timeText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
   },
   title: {
     fontSize: 16,
     fontWeight: '700',
     lineHeight: 22,
-    marginBottom: 6,
+    flexShrink: 1,
   },
   summary: {
     fontSize: 13,
@@ -225,6 +191,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     marginBottom: 10,
   },
   locationText: {
@@ -243,35 +212,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  confidenceDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  confidenceText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
   sourceCountText: {
     fontSize: 11,
+    fontWeight: '500',
   },
   metricsGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
+  iconMetricInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   metricItem: {
     fontSize: 12,
     fontWeight: '600',
   },
   contradictionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+    borderWidth: 1,
   },
   contradictionText: {
     fontSize: 11,
     fontWeight: '700',
   },
 });
+
+
 

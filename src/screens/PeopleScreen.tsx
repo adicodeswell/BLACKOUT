@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { PeersScreen } from './PeersScreen';
+import { NavIcon } from '../components/NavIcon';
 import type { PeopleService } from '../services/PeopleService';
 import type { PeerDto } from '../contracts/network/PeerDto';
 
@@ -50,7 +51,7 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
         activeOpacity={0.7}
       >
         <View style={[styles.avatarCircle, { backgroundColor: theme.colors.primary }]}>
-          <Text style={styles.avatarText}>{item.peerId.charAt(0).toUpperCase()}</Text>
+          <NavIcon name="PEER" color="#FFFFFF" size={18} />
         </View>
 
         <View style={styles.threadContent}>
@@ -72,14 +73,14 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
     return (
       <View style={[styles.threadCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
         <View style={[styles.avatarCircle, { backgroundColor: theme.colors.severityCritical }]}>
-          <Text style={styles.avatarText}>🚨</Text>
+          <NavIcon name="WARNING" color="#FFFFFF" size={18} />
         </View>
 
         <View style={styles.threadContent}>
           <View style={styles.threadHeader}>
             <Text style={[styles.peerTitle, { color: theme.colors.textPrimary }]}>{item.name}</Text>
-            <View style={[styles.activeTag, { backgroundColor: theme.colors.confidenceConfirmed }]}>
-              <Text style={styles.activeTagText}>{item.status}</Text>
+            <View style={[styles.activeTag, { backgroundColor: `${theme.colors.confidenceConfirmed}20`, borderColor: theme.colors.confidenceConfirmed }]}>
+              <Text style={[styles.activeTagText, { color: theme.colors.confidenceConfirmed }]}>{item.status}</Text>
             </View>
           </View>
           <Text style={[styles.previewText, { color: theme.colors.textSecondary }]}>
@@ -103,10 +104,13 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
       {/* Network identity pill header */}
       <View style={[styles.identityBanner, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.surfaceBorder }]}>
         <View style={styles.identityRow}>
-          <Text style={[styles.identityTitle, { color: theme.colors.textPrimary }]}>Local Node: self-node-01</Text>
-          <View style={styles.badgeRow}>
-            <Text style={{ color: theme.colors.confidenceConfirmed, fontSize: 8, marginRight: 4 }}>●</Text>
-            <Text style={[styles.badgeText, { color: theme.colors.textSecondary }]}>Port 18888 Mesh</Text>
+          <View style={styles.identityTitleGroup}>
+            <Text style={[styles.identityKicker, { color: theme.colors.textMuted }]}>LOCAL MESH IDENTITY</Text>
+            <Text style={[styles.identityTitle, { color: theme.colors.textPrimary }]}>Node: self-node-01</Text>
+          </View>
+          <View style={[styles.badgeRow, { backgroundColor: `${theme.colors.networkActive}18`, borderColor: `${theme.colors.networkActive}40` }]}>
+            <View style={[styles.liveDot, { backgroundColor: theme.colors.networkActive }]} />
+            <Text style={[styles.badgeText, { color: theme.colors.networkActive }]}>Port 18888 Active</Text>
           </View>
         </View>
       </View>
@@ -164,7 +168,9 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <View style={[styles.emptyCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-                <Text style={{ fontSize: 32, marginBottom: 8 }}>📬</Text>
+                <View style={[styles.emptyIconCircle, { backgroundColor: theme.colors.surfaceElevated }]}>
+                  <NavIcon name="MESSAGE" color={theme.colors.textMuted} size={28} />
+                </View>
                 <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>No Active Message Threads</Text>
                 <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
                   Select a discovered P2P node from "Nearby Peers" or tap an "Emergency Channel" to initiate direct communication.
@@ -191,7 +197,7 @@ const styles = StyleSheet.create({
   },
   identityBanner: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
   },
   identityRow: {
@@ -199,17 +205,36 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  identityTitle: {
-    fontSize: 13,
+  identityTitleGroup: {
+    flexShrink: 1,
+  },
+  identityKicker: {
+    fontSize: 9,
     fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  identityTitle: {
+    fontSize: 14,
+    fontWeight: '800',
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 6,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   badgeText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '700',
   },
   segmentContainer: {
     flexDirection: 'row',
@@ -220,10 +245,11 @@ const styles = StyleSheet.create({
   },
   segmentTab: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 44,
   },
   segmentText: {
     fontSize: 11,
@@ -239,6 +265,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     borderWidth: 1,
+    minHeight: 64,
   },
   avatarCircle: {
     width: 40,
@@ -247,11 +274,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
   },
   threadContent: {
     flex: 1,
@@ -265,6 +287,7 @@ const styles = StyleSheet.create({
   peerTitle: {
     fontSize: 14,
     fontWeight: '700',
+    flexShrink: 1,
   },
   timeText: {
     fontSize: 11,
@@ -276,17 +299,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+    borderWidth: 1,
   },
   activeTagText: {
-    color: '#FFFFFF',
     fontSize: 9,
     fontWeight: '700',
   },
   contactChatButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 6,
     marginLeft: 8,
+    minHeight: 36,
+    justifyContent: 'center',
   },
   contactChatButtonText: {
     color: '#FFFFFF',
@@ -297,7 +322,7 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 40,
+    marginTop: 20,
   },
   emptyCard: {
     padding: 24,
@@ -306,9 +331,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
   emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     marginBottom: 6,
   },
   emptySubtitle: {
@@ -316,11 +350,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 16,
+    maxWidth: 280,
   },
   actionBtn: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 8,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionBtnText: {
     color: '#FFFFFF',
@@ -328,3 +366,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

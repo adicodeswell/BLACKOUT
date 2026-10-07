@@ -14,6 +14,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useDirectMessage } from '../hooks/useDirectMessage';
 import type { PeopleService } from '../services/PeopleService';
 import type { MessageDto } from '../contracts/network/MessageDto';
+import { NavIcon } from '../components/NavIcon';
 
 interface DirectMessageScreenProps {
   peerId: string;
@@ -133,7 +134,9 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
       ) : messages.length === 0 ? (
         <View style={styles.emptyContainer}>
           <View style={[styles.emptyCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-            <Text style={{ fontSize: 32, marginBottom: 8 }}>💬</Text>
+            <View style={{ marginBottom: 12 }}>
+              <NavIcon name="MESSAGE" size={32} color={theme.colors.primary} />
+            </View>
             <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>Direct P2P Channel Open</Text>
             <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
               No messages exchanged with <Text style={{ fontWeight: '700' }}>{peerId}</Text> yet. Send a direct mesh packet below.
@@ -181,7 +184,7 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
           {isSending ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Text style={styles.sendButtonText}>Send</Text>
+            <NavIcon name="SEND" size={16} color="#FFFFFF" />
           )}
         </TouchableOpacity>
       </View>

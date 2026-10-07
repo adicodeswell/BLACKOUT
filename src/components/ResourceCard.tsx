@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { NavIcon, NavIconName } from './NavIcon';
 import type { ResourceDto, ResourceAvailability, ResourceType } from '../contracts/data/ResourceDto';
 
 interface ResourceCardProps {
@@ -8,13 +9,13 @@ interface ResourceCardProps {
   onPress: () => void;
 }
 
-const TYPE_EMOJI_MAP: Record<ResourceType, string> = {
-  WATER: '💧',
-  FOOD: '🍲',
-  SHELTER: '⛺',
-  MEDICINE: '💊',
-  MEDICAL: '🚑',
-  OTHER: '📦',
+const TYPE_ICON_MAP: Record<ResourceType, NavIconName> = {
+  WATER: 'WATER',
+  FOOD: 'FOOD',
+  SHELTER: 'SHELTER',
+  MEDICINE: 'MEDICAL',
+  MEDICAL: 'MEDICAL',
+  OTHER: 'OTHER',
 };
 
 export const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onPress }) => {
@@ -44,11 +45,22 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onPress })
     return `${Math.floor(hours / 24)}d ago`;
   };
 
+  const getExpirationStatus = () => {
+    if (!resource.expires_at) return null;
+    const diffMs = resource.expires_at - Date.now();
+    if (diffMs <= 0) return { label: 'EXPIRED', expired: true };
+    const mins = Math.floor(diffMs / (1000 * 60));
+    if (mins < 60) return { label: `Expires in ${mins}m`, expired: false };
+    const hours = Math.floor(mins / 60);
+    return { label: `Expires in ${hours}h`, expired: false };
+  };
+
   const availColor = getAvailabilityColor(resource.availability);
-  const emoji = TYPE_EMOJI_MAP[resource.type] || '📦';
+  const iconName = TYPE_ICON_MAP[resource.type] || 'OTHER';
+  const expStatus = getExpirationStatus();
 
   // Capacity percentage calculation
-  const hasCapacityData = resource.capacity && resource.remaining_capacity !== undefined;
+  const hasCapacityData = resource.capacity !== undefined && resource.capacity > 0 && resource.remaining_capacity !== undefined;
   const capacityPercent = hasCapacityData
     ? Math.min(100, Math.max(0, Math.round((resource.remaining_capacity! / resource.capacity!) * 100)))
     : undefined;
@@ -69,7 +81,7 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onPress })
       {/* 1. Header Row */}
       <View style={styles.headerRow}>
         <View style={styles.typeBadgeGroup}>
-          <Text style={styles.typeEmoji}>{emoji}</Text>
+          <NavIcon name={iconName} size={16} color={theme.colors.primary} />
           <Text style={[styles.typeText, { color: theme.colors.textPrimary }]}>{resource.type}</Text>
         </View>
 
@@ -90,11 +102,13 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onPress })
       ) : null}
 
       {/* 3. Capacity Bar & Units */}
-      {hasCapacityData && capacityPercent !== undefined && (
+      {hasCapacityData && capacityPercent !== undefined ? (
         <View style={styles.capacityContainer}>
           <View style={styles.capacityMetaRow}>
             <Text style={[styles.remainingText, { color: theme.colors.textPrimary }]}>
-              {resource.remaining_capacity} / {resource.capacity} units remaining
+              {resource.remaining_capacity === 0
+                ? 'OUT OF STOCK'
+                : `${resource.remaining_capacity} / ${resource.capacity} units remaining`}
             </Text>
             <Text style={[styles.percentText, { color: availColor }]}>{capacityPercent}%</Text>
           </View>
@@ -102,16 +116,31 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onPress })
             <View style={[styles.capacityFill, { width: `${capacityPercent}%`, backgroundColor: availColor }]} />
           </View>
         </View>
+      ) : (
+        <View style={styles.noCapacityRow}>
+          <Text style={[styles.noCapacityText, { color: theme.colors.textSecondary }]}>Capacity: Not reported</Text>
+        </View>
       )}
 
       {/* 4. Footer Metadata */}
       <View style={[styles.footerRow, { borderTopColor: theme.colors.surfaceBorder }]}>
-        <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
-          📍 {resource.location.latitude.toFixed(4)}, {resource.location.longitude.toFixed(4)}
-        </Text>
-        <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
-          Updated {timeAgo(resource.updated_at)}
-        </Text>
+        <View style={styles.locationGroup}>
+          <NavIcon name="LOCATION" size={12} color={theme.colors.textSecondary} />
+          <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
+            {resource.location.latitude.toFixed(4)}, {resource.location.longitude.toFixed(4)}
+          </Text>
+        </View>
+
+        <View style={styles.rightMetaGroup}>
+          {expStatus && (
+            <Text style={[styles.metaText, { color: expStatus.expired ? theme.colors.severityCritical : theme.colors.severityMedium, marginRight: 8, fontWeight: '700' }]}>
+              {expStatus.label}
+            </Text>
+          )}
+          <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
+            Updated {timeAgo(resource.updated_at)}
+          </Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -136,9 +165,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  typeEmoji: {
-    fontSize: 16,
-  },
   typeText: {
     fontSize: 11,
     fontWeight: '800',
@@ -148,7 +174,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
     gap: 5,
@@ -177,6 +203,13 @@ const styles = StyleSheet.create({
   capacityContainer: {
     marginBottom: 12,
   },
+  noCapacityRow: {
+    marginBottom: 12,
+  },
+  noCapacityText: {
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
   capacityMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -185,7 +218,7 @@ const styles = StyleSheet.create({
   },
   remainingText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   percentText: {
     fontSize: 12,
@@ -206,6 +239,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 10,
     borderTopWidth: 1,
+  },
+  locationGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  rightMetaGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   metaText: {
     fontSize: 11,

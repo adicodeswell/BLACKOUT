@@ -9,3 +9,5 @@ export * from './InputField';
 export * from './AISuggestionCard';
 export * from './IncidentCard';
 export * from './ResourceCard';
+export * from './NavIcon';
+export * from './MoreMenuModal';
