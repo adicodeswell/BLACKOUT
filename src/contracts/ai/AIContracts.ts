@@ -8,6 +8,7 @@ export interface ReportClassification {
   severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   confidence: number;
   model_version: string;
+  rationale?: string;
 }
 
 export interface SimilarityRequest {
