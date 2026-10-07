@@ -155,6 +155,16 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void addListener(String eventName) {
+        // Required for RN built-in Event Emitter Calls
+    }
+
+    @ReactMethod
+    public void removeListeners(Integer count) {
+        // Required for RN built-in Event Emitter Calls
+    }
+
+    @ReactMethod
     public void pingNative(Promise promise) {
         try {
             WritableMap result = Arguments.createMap();

@@ -16,7 +16,7 @@ import { useEmergencyReport } from '../hooks/useEmergencyReport';
 import { RuleBasedAIEngine } from '../services/RuleBasedAIEngine';
 import { AISuggestionCard } from '../components/AISuggestionCard';
 import { SeverityBadge } from '../components/SeverityBadge';
-import { StatusPill } from '../components/StatusPill';
+
 import { PrimaryButton } from '../components/PrimaryButton';
 import type { ReportCategory, Severity } from '../contracts/data/EmergencyReport';
 import type { EmergencyReportService } from '../services/EmergencyReportService';

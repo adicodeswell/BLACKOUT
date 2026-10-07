@@ -18,7 +18,7 @@ const AppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider style={{ flex: 1 }}>
       <ThemeProvider>
         <ServiceProvider>
           <AppContent />
