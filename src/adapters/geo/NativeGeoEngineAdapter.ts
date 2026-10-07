@@ -6,7 +6,7 @@ import type { HazardDto } from '../../contracts/geo/HazardDto';
 import type { Result } from '../../contracts/common/Result';
 
 const { BlackoutGeoModule } = NativeModules;
-const geoEmitter = new NativeEventEmitter(BlackoutGeoModule);
+const geoEmitter = BlackoutGeoModule ? new NativeEventEmitter(BlackoutGeoModule) : null;
 
 export class NativeGeoEngineAdapter implements GeoEngine {
   private async requestPermissions() {
@@ -108,11 +108,11 @@ export class NativeGeoEngineAdapter implements GeoEngine {
 
   observeLocation(listener: (event: any) => void): () => void {
     this.startTracking().catch(() => {});
-    const sub = geoEmitter.addListener('LOCATION_UPDATED', (location: any) => {
+    const sub = geoEmitter ? geoEmitter.addListener('LOCATION_UPDATED', (location: any) => {
       listener({ type: 'LOCATION_UPDATED', location });
-    });
+    }) : null;
     return () => {
-      sub.remove();
+      if (sub) sub.remove();
       this.stopTracking().catch(() => {});
     };
   }

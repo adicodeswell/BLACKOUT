@@ -357,9 +357,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         >
           <Camera
             ref={cameraRef}
-            centerCoordinate={centerCoordinate}
-            zoomLevel={zoomLevel}
-            animationDuration={400}
+            center={centerCoordinate}
+            zoom={zoomLevel}
+            duration={400}
           />
 
           {/* Incident Markers */}
