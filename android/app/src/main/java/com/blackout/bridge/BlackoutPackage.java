@@ -18,6 +18,7 @@ public class BlackoutPackage implements ReactPackage {
         List<NativeModule> modules = new ArrayList<>();
         modules.add(new BlackoutNativeModule(reactContext));
         modules.add(new BlackoutDataModule(reactContext));
+        modules.add(new BlackoutGeoModule(reactContext));
         return modules;
     }
 

@@ -1,0 +1,88 @@
+{
+  "parent": { "type": "page_id", "page_id": "3edfc925-a030-80b7-a182-d30be07e24ea" },
+  "properties": {
+    "title": { "title": [{ "type": "text", "text": { "content": "Production Roadmap & Gap Analysis" } }] }
+  },
+  "children": [
+    {
+      "object": "block",
+      "type": "heading_1",
+      "heading_1": { "rich_text": [{ "type": "text", "text": { "content": "Current State Analysis (Gaps & Mocks)" } }] }
+    },
+    {
+      "object": "block",
+      "type": "paragraph",
+      "paragraph": { "rich_text": [{ "type": "text", "text": { "content": "The frontend UI is fully functional, but the application relies on mocks and bypassed native layers to run in a simulator. To achieve a production-grade mesh network, we must implement the hardware-level APIs." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Network Engine is Stubbed: In BlackoutNativeModule.java, we are passing null to BleDiscoveryEngine and WifiDirectManager, bypassing physical discovery." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Geo Engine is Mocked: The frontend uses DevGeoEngine, hardcoding San Francisco and mock hazards." } }] }
+    },
+    {
+      "object": "block",
+      "type": "heading_1",
+      "heading_1": { "rich_text": [{ "type": "text", "text": { "content": "Phase 1: Physical Mesh Networking (Member 1)" } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Hardware Injections: Modify BlackoutNativeModule to inject BluetoothAdapter and WifiP2pManager into the network layers." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Wi-Fi Direct Handshake: Implement a BroadcastReceiver to handle WIFI_P2P_PEERS_CHANGED_ACTION and negotiate TCP Sockets." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Anti-Entropy Sync: Implement a background Gossip protocol to sync Room databases between peers." } }] }
+    },
+    {
+      "object": "block",
+      "type": "heading_1",
+      "heading_1": { "rich_text": [{ "type": "text", "text": { "content": "Phase 2: Offline Geospatial Engine (Member 3)" } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Native Module Creation: Create BlackoutGeoModule.java and expose GeoEngineAdapter.ts." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Real-Time GPS: Integrate Android FusedLocationProviderClient." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Offline Tile Storage: Cache/download MapLibre vector tiles for offline rendering." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "A* Spatial Routing: Integrate an offline routing algorithm (SpatiaLite) to path around hazards." } }] }
+    },
+    {
+      "object": "block",
+      "type": "heading_1",
+      "heading_1": { "rich_text": [{ "type": "text", "text": { "content": "Phase 3: Frontend Integration & Polish (Member 4)" } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Camera Integration: Integrate react-native-image-picker in EmergencyReportScreen." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Foreground Service: Connect the app lifecycle to an Android Foreground Service to keep the mesh alive in background." } }] }
+    }
+  ]
+}

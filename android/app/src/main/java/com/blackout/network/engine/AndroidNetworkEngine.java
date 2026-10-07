@@ -72,6 +72,7 @@ public class AndroidNetworkEngine {
         Log.i(TAG, "Stopping Android Network Engine...");
         
         if (bleEngine != null) bleEngine.stop();
+        if (wifiManager != null) wifiManager.stop();
         if (networkServer != null) networkServer.stop();
         if (connectionManager != null) connectionManager.disconnectAll();
         

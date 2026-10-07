@@ -2,6 +2,10 @@ package com.blackout.bridge;
 
 import androidx.annotation.NonNull;
 import android.util.Log;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothManager;
+import android.content.Context;
+import android.net.wifi.p2p.WifiP2pManager;
 
 import com.blackout.network.discovery.BleDiscoveryEngine;
 import com.blackout.network.discovery.WifiDirectManager;
@@ -73,9 +77,15 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                 peer.start();
             });
 
-            // Nulls represent the mocked hardware until Phase 7
-            BleDiscoveryEngine bleEngine = new BleDiscoveryEngine(null);
-            WifiDirectManager wifiManager = new WifiDirectManager(null, null);
+            // Inject hardware adapters
+            BluetoothManager bluetoothManager = (BluetoothManager) ctx.getSystemService(Context.BLUETOOTH_SERVICE);
+            BluetoothAdapter bluetoothAdapter = bluetoothManager != null ? bluetoothManager.getAdapter() : null;
+
+            WifiP2pManager wifiP2pManager = (WifiP2pManager) ctx.getSystemService(Context.WIFI_P2P_SERVICE);
+            WifiP2pManager.Channel channel = wifiP2pManager != null ? wifiP2pManager.initialize(ctx, ctx.getMainLooper(), null) : null;
+
+            BleDiscoveryEngine bleEngine = new BleDiscoveryEngine(bluetoothAdapter);
+            WifiDirectManager wifiManager = new WifiDirectManager(wifiP2pManager, channel, ctx);
 
             networkEngine = new AndroidNetworkEngine(identity, bleEngine, wifiManager, connectionManager, networkServer);
             

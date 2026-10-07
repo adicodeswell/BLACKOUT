@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -34,7 +34,7 @@ const DARK_MAP_STYLE: any = {
   sources: {
     demotiles: {
       type: 'raster',
-      tiles: ['https://demotiles.maplibre.org/tiles/{z}/{x}/{y}.png'],
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       tileSize: 256,
       attribution: '© MapLibre © OpenStreetMap contributors',
     },
@@ -69,7 +69,7 @@ const LIGHT_MAP_STYLE: any = {
   sources: {
     demotiles: {
       type: 'raster',
-      tiles: ['https://demotiles.maplibre.org/tiles/{z}/{x}/{y}.png'],
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       tileSize: 256,
       attribution: '© MapLibre © OpenStreetMap contributors',
     },
@@ -135,9 +135,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   } = useMap(mapService);
 
   // Camera state for MapLibre
-  const [zoomLevel, setZoomLevel] = useState<number>(13);
-  const [centerCoordinate, setCenterCoordinate] = useState<[number, number]>([-122.4194, 37.7749]);
+  const [zoomLevel, setZoomLevel] = useState<number>(2);
+  const [centerCoordinate, setCenterCoordinate] = useState<[number, number]>([0.0, 0.0]);
   const [showLegend, setShowLegend] = useState<boolean>(false);
+  const cameraRef = useRef<any>(null);
 
   // Update center when location is acquired
   useEffect(() => {
@@ -147,12 +148,19 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, [currentLocation]);
 
   const handleRecenter = useCallback(async () => {
-    await centerOnLocation();
-    if (currentLocation?.latitude && currentLocation?.longitude) {
-      setCenterCoordinate([currentLocation.longitude, currentLocation.latitude]);
-      setZoomLevel(14);
+    const loc = await centerOnLocation();
+    if (loc?.latitude && loc?.longitude) {
+      setCenterCoordinate([loc.longitude, loc.latitude]);
+      setZoomLevel(15);
+      if (cameraRef.current) {
+        cameraRef.current.flyTo({
+          center: [loc.longitude, loc.latitude],
+          zoom: 15,
+          duration: 1200
+        });
+      }
     }
-  }, [centerOnLocation, currentLocation]);
+  }, [centerOnLocation]);
 
   const handleZoomIn = useCallback(() => {
     setZoomLevel((prev) => Math.min(prev + 1, 18));
@@ -348,9 +356,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           onPress={() => selectMarker(null)}
         >
           <Camera
-            center={centerCoordinate}
-            zoom={zoomLevel}
-            duration={400}
+            ref={cameraRef}
+            centerCoordinate={centerCoordinate}
+            zoomLevel={zoomLevel}
+            animationDuration={400}
           />
 
           {/* Incident Markers */}

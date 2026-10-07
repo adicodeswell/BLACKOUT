@@ -27,7 +27,7 @@ export interface UseMapResult {
   selectedMarker: SelectedMarker | null;
   mapError: string | null;
   refreshMap: () => Promise<void>;
-  centerOnLocation: () => Promise<void>;
+  centerOnLocation: () => Promise<LocationDto | null>;
   selectMarker: (marker: SelectedMarker | null) => void;
   filterIncidents: boolean;
   filterResources: boolean;
@@ -105,6 +105,7 @@ export const useMap = (mapService: MapService): UseMapResult => {
       if (locRes.ok) {
         setCurrentLocation(locRes.data);
         setLocationState('SUCCESS');
+        return locRes.data;
       } else {
         setLocationState('UNAVAILABLE');
         setLocationError(locRes.error.message || 'Location fix currently unavailable');
@@ -139,10 +140,12 @@ export const useMap = (mapService: MapService): UseMapResult => {
   }, [loadData, acquireLocation, mapService]);
 
   const centerOnLocation = useCallback(async () => {
-    await acquireLocation();
-    if (currentLocation) {
-      setSelectedMarker({ type: 'LOCATION', data: currentLocation });
+    const loc = await acquireLocation();
+    const finalLoc = loc || currentLocation;
+    if (finalLoc) {
+      setSelectedMarker({ type: 'LOCATION', data: finalLoc });
     }
+    return finalLoc || null;
   }, [acquireLocation, currentLocation]);
 
   const selectMarker = useCallback((marker: SelectedMarker | null) => {

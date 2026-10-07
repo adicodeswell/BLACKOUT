@@ -8,6 +8,7 @@ import { DevDataEngine } from '../adapters/data/DevDataEngine';
 import { RoomDataEngineAdapter } from '../adapters/data/RoomDataEngineAdapter';
 import { DevGeoEngine } from '../adapters/geo/DevGeoEngine';
 import { GeoEngineAdapter } from '../adapters/geo/GeoEngineAdapter';
+import { NativeGeoEngineAdapter } from '../adapters/geo/NativeGeoEngineAdapter';
 import { NetworkEngineAdapter } from '../adapters/network/NetworkEngineAdapter';
 import { NativeNetworkEngineAdapter } from '../adapters/network/NativeNetworkEngineAdapter';
 import { RuleBasedAIEngine } from './RuleBasedAIEngine';
@@ -44,8 +45,10 @@ export const ServiceProvider: React.FC<ServiceProviderProps> = ({ children, over
         ? new RoomDataEngineAdapter()
         : new DevDataEngine());
 
-    const devGeoEngine = new DevGeoEngine();
-    const geoEngine: GeoEngine = overrides?.geoEngine || new GeoEngineAdapter(devGeoEngine);
+    const geoEngine: GeoEngine = overrides?.geoEngine || 
+      (Platform.OS === 'android' && NativeModules.BlackoutGeoModule
+        ? new NativeGeoEngineAdapter()
+        : new GeoEngineAdapter(new DevGeoEngine()));
 
     const networkEngine: NetworkEngine =
       overrides?.networkEngine ||
