@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,20 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Dimensions,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { MapService, DEFAULT_BAY_AREA_REGION } from '../services/MapService';
 import { DevGeoEngine } from '../adapters/geo/DevGeoEngine';
 import { DevDataEngine } from '../adapters/data/DevDataEngine';
 import { useMap, SelectedMarker } from '../hooks/useMap';
+import { NavIcon } from '../components/NavIcon';
 import type { IncidentDto } from '../contracts/data/IncidentDto';
 import type { ResourceDto } from '../contracts/data/ResourceDto';
 import type { HazardDto } from '../contracts/geo/HazardDto';
 import type { LocationDto } from '../contracts/geo/LocationDto';
+
+// MapLibre React Native
+import { Map as MapView, Camera, Marker } from '@maplibre/maplibre-react-native';
 
 interface MapScreenProps {
   mapService?: MapService;
@@ -24,25 +27,74 @@ interface MapScreenProps {
   onSelectResource?: (resourceId: string) => void;
 }
 
-const REGION = {
-  minLat: 37.750,
-  maxLat: 37.795,
-  minLon: -122.455,
-  maxLon: -122.400,
+// Production MapLibre Style Specifications for Dark & Light modes
+const DARK_MAP_STYLE: any = {
+  version: 8,
+  name: 'BLACKOUT Dark Emergency Map',
+  sources: {
+    demotiles: {
+      type: 'raster',
+      tiles: ['https://demotiles.maplibre.org/tiles/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© MapLibre © OpenStreetMap contributors',
+    },
+  },
+  layers: [
+    {
+      id: 'background',
+      type: 'background',
+      paint: {
+        'background-color': '#0F131C',
+      },
+    },
+    {
+      id: 'base-tiles',
+      type: 'raster',
+      source: 'demotiles',
+      minzoom: 0,
+      maxzoom: 19,
+      paint: {
+        'raster-opacity': 0.75,
+        'raster-brightness-max': 0.55,
+        'raster-contrast': 0.25,
+        'raster-saturation': -0.5,
+      },
+    },
+  ],
 };
 
-/**
- * Maps lat/lon to percentage position (0% - 100%) on the map surface
- */
-const getCanvasPosition = (lat: number, lon: number) => {
-  const latSpan = REGION.maxLat - REGION.minLat;
-  const lonSpan = REGION.maxLon - REGION.minLon;
-
-  // Invert latitude because SVG/screen Y goes downwards
-  const topPercent = Math.max(5, Math.min(95, ((REGION.maxLat - lat) / latSpan) * 100));
-  const leftPercent = Math.max(5, Math.min(95, ((lon - REGION.minLon) / lonSpan) * 100));
-
-  return { topPercent, leftPercent };
+const LIGHT_MAP_STYLE: any = {
+  version: 8,
+  name: 'BLACKOUT Light Emergency Map',
+  sources: {
+    demotiles: {
+      type: 'raster',
+      tiles: ['https://demotiles.maplibre.org/tiles/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© MapLibre © OpenStreetMap contributors',
+    },
+  },
+  layers: [
+    {
+      id: 'background',
+      type: 'background',
+      paint: {
+        'background-color': '#F4F6F9',
+      },
+    },
+    {
+      id: 'base-tiles',
+      type: 'raster',
+      source: 'demotiles',
+      minzoom: 0,
+      maxzoom: 19,
+      paint: {
+        'raster-opacity': 0.9,
+        'raster-contrast': 0.1,
+        'raster-saturation': -0.2,
+      },
+    },
+  ],
 };
 
 export const MapScreen: React.FC<MapScreenProps> = ({
@@ -82,18 +134,33 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setFilterHazards,
   } = useMap(mapService);
 
-  const renderMarkerIcon = (marker: SelectedMarker) => {
-    switch (marker.type) {
-      case 'INCIDENT':
-        return '🚨';
-      case 'RESOURCE':
-        return '📦';
-      case 'HAZARD':
-        return '⚠️';
-      case 'LOCATION':
-        return '◎';
+  // Camera state for MapLibre
+  const [zoomLevel, setZoomLevel] = useState<number>(13);
+  const [centerCoordinate, setCenterCoordinate] = useState<[number, number]>([-122.4194, 37.7749]);
+  const [showLegend, setShowLegend] = useState<boolean>(false);
+
+  // Update center when location is acquired
+  useEffect(() => {
+    if (currentLocation?.latitude && currentLocation?.longitude) {
+      setCenterCoordinate([currentLocation.longitude, currentLocation.latitude]);
     }
-  };
+  }, [currentLocation]);
+
+  const handleRecenter = useCallback(async () => {
+    await centerOnLocation();
+    if (currentLocation?.latitude && currentLocation?.longitude) {
+      setCenterCoordinate([currentLocation.longitude, currentLocation.latitude]);
+      setZoomLevel(14);
+    }
+  }, [centerOnLocation, currentLocation]);
+
+  const handleZoomIn = useCallback(() => {
+    setZoomLevel((prev) => Math.min(prev + 1, 18));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoomLevel((prev) => Math.max(prev - 1, 8));
+  }, []);
 
   const getSeverityColor = (severity?: string) => {
     switch (severity) {
@@ -124,16 +191,53 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
+  const currentMapStyle = theme.mode === 'dark' ? DARK_MAP_STYLE : LIGHT_MAP_STYLE;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Top Header & Offline Map Banner */}
-      <View style={[styles.headerContainer, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.surfaceBorder }]}>
-        <View style={styles.titleRow}>
-          <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Offline Map</Text>
-          <View style={[styles.offlineBadge, { backgroundColor: theme.colors.infoBg, borderColor: theme.colors.infoBorder }]}>
-            <Text style={[styles.offlineBadgeDot, { color: theme.colors.confidenceConfirmed }]}>●</Text>
-            <Text style={[styles.offlineBadgeText, { color: theme.colors.infoText }]}>
-              {offlineMapResult?.available ? 'Offline Ready (Local Cache)' : 'Offline Map Active'}
+      {/* 1. Floating Operational Header */}
+      <View
+        style={[
+          styles.floatingHeader,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.surfaceBorder,
+          },
+        ]}
+      >
+        <View style={styles.headerTitleRow}>
+          <View style={styles.brandTitleGroup}>
+            <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>
+              BLACKOUT MAP
+            </Text>
+            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
+              Local emergency intelligence
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.offlineBadge,
+              {
+                backgroundColor: offlineMapResult?.available ? theme.colors.infoBg : theme.colors.warningBg,
+                borderColor: offlineMapResult?.available ? theme.colors.infoBorder : theme.colors.warningBorder,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.offlineBadgeDot,
+                { color: offlineMapResult?.available ? theme.colors.confidenceConfirmed : theme.colors.warningText },
+              ]}
+            >
+              ●
+            </Text>
+            <Text
+              style={[
+                styles.offlineBadgeText,
+                { color: offlineMapResult?.available ? theme.colors.infoText : theme.colors.warningText },
+              ]}
+            >
+              {offlineMapResult?.available ? 'OFFLINE READY' : 'LOCAL GEO ENGINE'}
             </Text>
           </View>
         </View>
@@ -143,252 +247,370 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           <TouchableOpacity
             style={[
               styles.filterChip,
-              filterIncidents && { backgroundColor: theme.colors.dangerBg, borderColor: theme.colors.primaryDanger },
+              filterIncidents
+                ? { backgroundColor: theme.colors.dangerBg, borderColor: theme.colors.primaryDanger }
+                : { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder },
             ]}
             onPress={() => setFilterIncidents(!filterIncidents)}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.filterChipText, { color: filterIncidents ? theme.colors.dangerText : theme.colors.textSecondary }]}>
-              🚨 Incidents ({incidents.length})
+            <NavIcon
+              name="Alerts"
+              color={filterIncidents ? theme.colors.primaryDanger : theme.colors.textSecondary}
+              size={14}
+            />
+            <Text
+              style={[
+                styles.filterChipText,
+                { color: filterIncidents ? theme.colors.dangerText : theme.colors.textSecondary },
+              ]}
+            >
+              INCIDENTS ({incidents.length})
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[
               styles.filterChip,
-              filterResources && { backgroundColor: theme.colors.infoBg, borderColor: theme.colors.accent },
+              filterResources
+                ? { backgroundColor: theme.colors.infoBg, borderColor: theme.colors.accent }
+                : { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder },
             ]}
             onPress={() => setFilterResources(!filterResources)}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.filterChipText, { color: filterResources ? theme.colors.infoText : theme.colors.textSecondary }]}>
-              📦 Resources ({resources.length})
+            <NavIcon
+              name="Resources"
+              color={filterResources ? theme.colors.accent : theme.colors.textSecondary}
+              size={14}
+            />
+            <Text
+              style={[
+                styles.filterChipText,
+                { color: filterResources ? theme.colors.infoText : theme.colors.textSecondary },
+              ]}
+            >
+              RESOURCES ({resources.length})
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[
               styles.filterChip,
-              filterHazards && { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder },
+              filterHazards
+                ? { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder }
+                : { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder },
             ]}
             onPress={() => setFilterHazards(!filterHazards)}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.filterChipText, { color: filterHazards ? theme.colors.warningText : theme.colors.textSecondary }]}>
-              ⚠️ Hazards ({hazards.length})
+            <NavIcon
+              name="WARNING"
+              color={filterHazards ? theme.colors.warningText : theme.colors.textSecondary}
+              size={14}
+            />
+            <Text
+              style={[
+                styles.filterChipText,
+                { color: filterHazards ? theme.colors.warningText : theme.colors.textSecondary },
+              ]}
+            >
+              HAZARDS ({hazards.length})
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Location Status Message if unavailable */}
+        {/* Location Error / Status Banner if unavailable */}
         {locationState === 'UNAVAILABLE' || locationError ? (
-          <View style={[styles.locationBanner, { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder }]}>
+          <View
+            style={[
+              styles.locationBanner,
+              { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder },
+            ]}
+          >
+            <NavIcon name="LOCATION" color={theme.colors.warningText} size={14} />
             <Text style={[styles.locationBannerText, { color: theme.colors.warningText }]}>
-              ⚠️ Location unavailable. You can still browse nearby incident, resource and hazard data.
+              LOCATION UNAVAILABLE • Viewing offline incident & resource layer
             </Text>
           </View>
         ) : null}
       </View>
 
-      {/* Main Map View Surface */}
-      <View style={styles.mapCanvasContainer}>
-        {/* Background Grid & Topology Texture */}
-        <View style={[styles.mapCanvas, { backgroundColor: theme.mode === 'dark' ? '#12161F' : '#EBF0F5', borderColor: theme.colors.surfaceBorder }]}>
-          {/* Decorative Grid Lines */}
-          <View style={styles.gridLineHorizontal1} />
-          <View style={styles.gridLineHorizontal2} />
-          <View style={styles.gridLineVertical1} />
-          <View style={styles.gridLineVertical2} />
+      {/* 2. Real MapLibre Surface */}
+      <View style={styles.mapContainer}>
+        <MapView
+          style={styles.mapView}
+          mapStyle={currentMapStyle}
+          attribution={false}
+          logo={false}
+          compass={false}
+          scaleBar={false}
+          onPress={() => selectMarker(null)}
+        >
+          <Camera
+            center={centerCoordinate}
+            zoom={zoomLevel}
+            duration={400}
+          />
 
-          {/* Compass / Scale Overlay */}
-          <View style={[styles.scaleOverlay, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-            <Text style={[styles.scaleText, { color: theme.colors.textSecondary }]}>
-              DEV MAP SURFACE • N 37.77° W 122.41°
-            </Text>
-          </View>
-
-          {/* Map Legend Overlay */}
-          <View style={[styles.legendOverlay, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-            <Text style={[styles.legendTitle, { color: theme.colors.textSecondary }]}>Legend</Text>
-            <View style={styles.legendItem}>
-              <Text style={{ color: theme.colors.severityCritical }}>●</Text>
-              <Text style={[styles.legendText, { color: theme.colors.textPrimary }]}> Incident</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <Text style={{ color: theme.colors.accent }}>◆</Text>
-              <Text style={[styles.legendText, { color: theme.colors.textPrimary }]}> Resource</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <Text style={{ color: theme.colors.warningText }}>▲</Text>
-              <Text style={[styles.legendText, { color: theme.colors.textPrimary }]}> Hazard</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <Text style={{ color: theme.colors.primary }}>◎</Text>
-              <Text style={[styles.legendText, { color: theme.colors.textPrimary }]}> Location</Text>
-            </View>
-          </View>
-
-          {/* Render Hazards */}
-          {hazards.map((haz) => {
-            const geom = haz.geometry as { latitude: number; longitude: number };
-            if (!geom?.latitude || !geom?.longitude) return null;
-            const pos = getCanvasPosition(geom.latitude, geom.longitude);
-            const isSelected = selectedMarker?.type === 'HAZARD' && selectedMarker.data.hazard_id === haz.hazard_id;
-
-            return (
-              <TouchableOpacity
-                key={haz.hazard_id}
-                style={[
-                  styles.markerTouch,
-                  { top: `${pos.topPercent}%` as any, left: `${pos.leftPercent}%` as any },
-                ]}
-                onPress={() => selectMarker({ type: 'HAZARD', data: haz })}
-                activeOpacity={0.8}
-              >
-                <View
-                  style={[
-                    styles.hazardMarker,
-                    { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder },
-                    isSelected && [styles.selectedMarkerHalo, { borderColor: theme.colors.warningText }],
-                  ]}
-                >
-                  <Text style={styles.markerText}>▲</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-
-          {/* Render Resources */}
-          {resources.map((res) => {
-            if (!res.location) return null;
-            const pos = getCanvasPosition(res.location.latitude, res.location.longitude);
-            const isSelected = selectedMarker?.type === 'RESOURCE' && selectedMarker.data.resource_id === res.resource_id;
-
-            return (
-              <TouchableOpacity
-                key={res.resource_id}
-                style={[
-                  styles.markerTouch,
-                  { top: `${pos.topPercent}%` as any, left: `${pos.leftPercent}%` as any },
-                ]}
-                onPress={() => selectMarker({ type: 'RESOURCE', data: res })}
-                activeOpacity={0.8}
-              >
-                <View
-                  style={[
-                    styles.resourceMarker,
-                    { backgroundColor: theme.colors.infoBg, borderColor: theme.colors.accent },
-                    isSelected && [styles.selectedMarkerHalo, { borderColor: theme.colors.accent }],
-                  ]}
-                >
-                  <Text style={styles.markerText}>◆</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-
-          {/* Render Incidents */}
+          {/* Incident Markers */}
           {incidents.map((inc) => {
-            if (!inc.location) return null;
-            const pos = getCanvasPosition(inc.location.latitude, inc.location.longitude);
-            const isSelected = selectedMarker?.type === 'INCIDENT' && selectedMarker.data.incident_id === inc.incident_id;
+            if (!inc.location?.latitude || !inc.location?.longitude) return null;
+            const isSelected =
+              selectedMarker?.type === 'INCIDENT' && selectedMarker.data.incident_id === inc.incident_id;
             const sevColor = getSeverityColor(inc.severity);
 
             return (
-              <TouchableOpacity
-                key={inc.incident_id}
-                style={[
-                  styles.markerTouch,
-                  { top: `${pos.topPercent}%` as any, left: `${pos.leftPercent}%` as any },
-                ]}
+              <Marker
+                key={`inc-${inc.incident_id}`}
+                id={`inc-${inc.incident_id}`}
+                lngLat={[inc.location.longitude, inc.location.latitude]}
                 onPress={() => selectMarker({ type: 'INCIDENT', data: inc })}
-                activeOpacity={0.8}
               >
-                <View
-                  style={[
-                    styles.incidentMarker,
-                    { backgroundColor: sevColor, borderColor: '#FFFFFF' },
-                    isSelected && [styles.selectedMarkerHalo, { borderColor: sevColor }],
-                  ]}
-                >
-                  <Text style={styles.incidentMarkerText}>🚨</Text>
+                <View style={styles.markerAnchor}>
+                  <View
+                    style={[
+                      styles.incidentMarker,
+                      { backgroundColor: sevColor, borderColor: '#FFFFFF' },
+                      isSelected && [styles.selectedMarkerHalo, { borderColor: sevColor }],
+                    ]}
+                  >
+                    <NavIcon name="Alerts" color="#FFFFFF" size={14} />
+                  </View>
                 </View>
-              </TouchableOpacity>
+              </Marker>
             );
           })}
 
-          {/* Render Current Location Marker */}
-          {currentLocation ? (() => {
-            const pos = getCanvasPosition(currentLocation.latitude, currentLocation.longitude);
-            const isSelected = selectedMarker?.type === 'LOCATION';
+          {/* Resource Markers */}
+          {resources.map((res) => {
+            if (!res.location?.latitude || !res.location?.longitude) return null;
+            const isSelected =
+              selectedMarker?.type === 'RESOURCE' && selectedMarker.data.resource_id === res.resource_id;
+
             return (
-              <TouchableOpacity
-                style={[
-                  styles.markerTouch,
-                  { top: `${pos.topPercent}%` as any, left: `${pos.leftPercent}%` as any },
-                ]}
-                onPress={() => selectMarker({ type: 'LOCATION', data: currentLocation })}
-                activeOpacity={0.8}
+              <Marker
+                key={`res-${res.resource_id}`}
+                id={`res-${res.resource_id}`}
+                lngLat={[res.location.longitude, res.location.latitude]}
+                onPress={() => selectMarker({ type: 'RESOURCE', data: res })}
               >
-                <View style={[styles.locationPulse, { borderColor: theme.colors.primary }]}>
+                <View style={styles.markerAnchor}>
+                  <View
+                    style={[
+                      styles.resourceMarker,
+                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.accent },
+                      isSelected && [styles.selectedMarkerHalo, { borderColor: theme.colors.accent }],
+                    ]}
+                  >
+                    <NavIcon name="Resources" color={theme.colors.accent} size={13} />
+                  </View>
+                </View>
+              </Marker>
+            );
+          })}
+
+          {/* Hazard Markers */}
+          {hazards.map((haz) => {
+            const geom = haz.geometry as { latitude: number; longitude: number };
+            if (!geom?.latitude || !geom?.longitude) return null;
+            const isSelected =
+              selectedMarker?.type === 'HAZARD' && selectedMarker.data.hazard_id === haz.hazard_id;
+
+            return (
+              <Marker
+                key={`haz-${haz.hazard_id}`}
+                id={`haz-${haz.hazard_id}`}
+                lngLat={[geom.longitude, geom.latitude]}
+                onPress={() => selectMarker({ type: 'HAZARD', data: haz })}
+              >
+                <View style={styles.markerAnchor}>
+                  <View
+                    style={[
+                      styles.hazardMarker,
+                      { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningText },
+                      isSelected && [styles.selectedMarkerHalo, { borderColor: theme.colors.warningText }],
+                    ]}
+                  >
+                    <NavIcon name="WARNING" color={theme.colors.warningText} size={13} />
+                  </View>
+                </View>
+              </Marker>
+            );
+          })}
+
+          {/* Current Location Marker */}
+          {currentLocation?.latitude && currentLocation?.longitude ? (
+            <Marker
+              key="current-location"
+              id="current-location"
+              lngLat={[currentLocation.longitude, currentLocation.latitude]}
+              onPress={() => selectMarker({ type: 'LOCATION', data: currentLocation })}
+            >
+              <View style={styles.markerAnchor}>
+                <View style={[styles.locationRing, { borderColor: theme.colors.primary }]}>
                   <View style={[styles.locationDot, { backgroundColor: theme.colors.primary }]} />
                 </View>
-              </TouchableOpacity>
-            );
-          })() : null}
-
-          {/* Loading Indicator */}
-          {mapLoadingState === 'LOADING' ? (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color={theme.colors.primary} />
-              <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
-                Loading offline map data...
-              </Text>
-            </View>
+              </View>
+            </Marker>
           ) : null}
+        </MapView>
 
-          {/* Error Message */}
-          {mapError ? (
-            <View style={[styles.errorOverlay, { backgroundColor: theme.colors.dangerBg }]}>
-              <Text style={[styles.errorText, { color: theme.colors.dangerText }]}>{mapError}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={refreshMap}>
-                <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
+        {/* Loading Overlay */}
+        {mapLoadingState === 'LOADING' ? (
+          <View style={[styles.loadingOverlay, { backgroundColor: 'rgba(15, 19, 28, 0.45)' }]}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={[styles.loadingText, { color: '#FFFFFF' }]}>
+              Initializing offline map engine...
+            </Text>
+          </View>
+        ) : null}
 
-          {/* Map Surface Controls (Center Location + Refresh) */}
-          <View style={styles.controlsContainer}>
-            <TouchableOpacity
-              style={[styles.controlButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
-              onPress={centerOnLocation}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontSize: 18, color: theme.colors.textPrimary }}>◎</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.controlButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder, marginTop: 8 }]}
-              onPress={refreshMap}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontSize: 16, color: theme.colors.textPrimary }}>🔄</Text>
+        {/* Map Error Banner */}
+        {mapError ? (
+          <View style={[styles.errorBanner, { backgroundColor: theme.colors.dangerBg }]}>
+            <Text style={[styles.errorText, { color: theme.colors.dangerText }]}>{mapError}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={refreshMap}>
+              <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>Retry</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        ) : null}
       </View>
 
-      {/* Selected Marker Detail Bottom Sheet */}
+      {/* 3. Floating Collapsible Legend */}
+      {showLegend ? (
+        <View
+          style={[
+            styles.floatingLegend,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.surfaceBorder,
+            },
+          ]}
+        >
+          <View style={styles.legendHeader}>
+            <Text style={[styles.legendTitle, { color: theme.colors.textSecondary }]}>
+              MAP OVERLAY LEGEND
+            </Text>
+            <TouchableOpacity onPress={() => setShowLegend(false)} style={styles.legendClose}>
+              <Text style={{ color: theme.colors.textSecondary, fontSize: 14 }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: theme.colors.severityCritical }]} />
+            <Text style={[styles.legendText, { color: theme.colors.textPrimary }]}>
+              Critical / High Incident
+            </Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: theme.colors.accent }]} />
+            <Text style={[styles.legendText, { color: theme.colors.textPrimary }]}>
+              Emergency Resource Point
+            </Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: theme.colors.warningText }]} />
+            <Text style={[styles.legendText, { color: theme.colors.textPrimary }]}>
+              Active Road / Hazard Area
+            </Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: theme.colors.primary }]} />
+            <Text style={[styles.legendText, { color: theme.colors.textPrimary }]}>
+              Your GNSS Location Fix
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* 4. Floating Map Control Buttons */}
+      <View style={[styles.controlsContainer, selectedMarker ? { bottom: 270 } : { bottom: 24 }]}>
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder },
+          ]}
+          onPress={handleZoomIn}
+          activeOpacity={0.7}
+          accessibilityLabel="Zoom In"
+        >
+          <NavIcon name="PLUS" color={theme.colors.textPrimary} size={16} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.surfaceBorder,
+              marginTop: 8,
+            },
+          ]}
+          onPress={handleZoomOut}
+          activeOpacity={0.7}
+          accessibilityLabel="Zoom Out"
+        >
+          <View style={{ width: 12, height: 2, backgroundColor: theme.colors.textPrimary }} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.surfaceBorder,
+              marginTop: 8,
+            },
+          ]}
+          onPress={handleRecenter}
+          activeOpacity={0.7}
+          accessibilityLabel="My Location"
+        >
+          <NavIcon name="LOCATION" color={theme.colors.primary} size={18} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.surfaceBorder,
+              marginTop: 8,
+            },
+          ]}
+          onPress={() => setShowLegend(!showLegend)}
+          activeOpacity={0.7}
+          accessibilityLabel="Toggle Legend"
+        >
+          <NavIcon name="INFO" color={showLegend ? theme.colors.primary : theme.colors.textSecondary} size={16} />
+        </TouchableOpacity>
+      </View>
+
+      {/* 5. Selected Marker Detail Bottom Sheet */}
       {selectedMarker ? (
-        <View style={[styles.bottomSheet, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.surfaceBorder }]}>
+        <View
+          style={[
+            styles.bottomSheet,
+            { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.surfaceBorder },
+          ]}
+        >
           <View style={styles.sheetHeader}>
-            <View style={styles.sheetHeaderTitleRow}>
-              <Text style={{ fontSize: 20, marginRight: 8 }}>{renderMarkerIcon(selectedMarker)}</Text>
+            <View style={styles.sheetTitleGroup}>
+              <Text style={[styles.sheetPreTitle, { color: theme.colors.textSecondary }]}>
+                {selectedMarker.type} DETAILS
+              </Text>
               <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                 {selectedMarker.type === 'INCIDENT' && selectedMarker.data.title}
                 {selectedMarker.type === 'RESOURCE' && selectedMarker.data.name}
-                {selectedMarker.type === 'HAZARD' && `Hazard: ${selectedMarker.data.type}`}
-                {selectedMarker.type === 'LOCATION' && 'Current Location'}
+                {selectedMarker.type === 'HAZARD' && `HAZARD: ${selectedMarker.data.type}`}
+                {selectedMarker.type === 'LOCATION' && 'CURRENT GNSS LOCATION'}
               </Text>
             </View>
-            <TouchableOpacity onPress={() => selectMarker(null)} style={styles.closeButton}>
+            <TouchableOpacity
+              onPress={() => selectMarker(null)}
+              style={styles.closeButton}
+              activeOpacity={0.7}
+            >
               <Text style={[styles.closeText, { color: theme.colors.textSecondary }]}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -398,14 +620,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             {selectedMarker.type === 'INCIDENT' && (
               <View>
                 <View style={styles.badgeRow}>
-                  <View style={[styles.badge, { backgroundColor: getSeverityColor(selectedMarker.data.severity) }]}>
+                  <View
+                    style={[
+                      styles.badge,
+                      { backgroundColor: getSeverityColor(selectedMarker.data.severity) },
+                    ]}
+                  >
                     <Text style={styles.badgeText}>{selectedMarker.data.severity}</Text>
                   </View>
                   <View style={[styles.badge, { backgroundColor: theme.colors.surfaceBorder }]}>
-                    <Text style={[styles.badgeText, { color: theme.colors.textPrimary }]}>{selectedMarker.data.status}</Text>
+                    <Text style={[styles.badgeText, { color: theme.colors.textPrimary }]}>
+                      {selectedMarker.data.status}
+                    </Text>
                   </View>
                   <View style={[styles.badge, { backgroundColor: theme.colors.infoBg }]}>
-                    <Text style={[styles.badgeText, { color: theme.colors.infoText }]}>{selectedMarker.data.confidence_level}</Text>
+                    <Text style={[styles.badgeText, { color: theme.colors.infoText }]}>
+                      CONFIDENCE: {selectedMarker.data.confidence_level}
+                    </Text>
                   </View>
                 </View>
 
@@ -414,17 +645,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 </Text>
 
                 {selectedMarker.data.location ? (
-                  <Text style={[styles.coordsText, { color: theme.colors.textSecondary }]}>
-                    📍 {selectedMarker.data.location.latitude.toFixed(4)}, {selectedMarker.data.location.longitude.toFixed(4)} (±{selectedMarker.data.location.accuracy_m}m)
-                  </Text>
+                  <View style={styles.metaRow}>
+                    <NavIcon name="LOCATION" color={theme.colors.textSecondary} size={12} />
+                    <Text style={[styles.coordsText, { color: theme.colors.textSecondary }]}>
+                      {selectedMarker.data.location.latitude.toFixed(4)},{' '}
+                      {selectedMarker.data.location.longitude.toFixed(4)} (±
+                      {selectedMarker.data.location.accuracy_m}m)
+                    </Text>
+                  </View>
                 ) : null}
 
                 {onSelectIncident && (
                   <TouchableOpacity
                     style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
                     onPress={() => onSelectIncident(selectedMarker.data.incident_id)}
+                    activeOpacity={0.8}
                   >
-                    <Text style={styles.actionButtonText}>View Full Incident Details →</Text>
+                    <Text style={styles.actionButtonText}>VIEW INCIDENT →</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -434,11 +671,18 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             {selectedMarker.type === 'RESOURCE' && (
               <View>
                 <View style={styles.badgeRow}>
-                  <View style={[styles.badge, { backgroundColor: getAvailabilityColor(selectedMarker.data.availability) }]}>
+                  <View
+                    style={[
+                      styles.badge,
+                      { backgroundColor: getAvailabilityColor(selectedMarker.data.availability) },
+                    ]}
+                  >
                     <Text style={styles.badgeText}>{selectedMarker.data.availability}</Text>
                   </View>
                   <View style={[styles.badge, { backgroundColor: theme.colors.infoBg }]}>
-                    <Text style={[styles.badgeText, { color: theme.colors.infoText }]}>{selectedMarker.data.type}</Text>
+                    <Text style={[styles.badgeText, { color: theme.colors.infoText }]}>
+                      TYPE: {selectedMarker.data.type}
+                    </Text>
                   </View>
                 </View>
 
@@ -449,23 +693,34 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 ) : null}
 
                 {selectedMarker.data.remaining_capacity !== undefined ? (
-                  <Text style={[styles.coordsText, { color: theme.colors.textPrimary, fontWeight: '600' }]}>
-                    Capacity: {selectedMarker.data.remaining_capacity} / {selectedMarker.data.capacity ?? '∞'} remaining
+                  <Text
+                    style={[
+                      styles.capacityText,
+                      { color: theme.colors.textPrimary },
+                    ]}
+                  >
+                    Remaining Capacity: {selectedMarker.data.remaining_capacity} /{' '}
+                    {selectedMarker.data.capacity ?? '∞'} units
                   </Text>
                 ) : null}
 
                 {selectedMarker.data.location ? (
-                  <Text style={[styles.coordsText, { color: theme.colors.textSecondary }]}>
-                    📍 {selectedMarker.data.location.latitude.toFixed(4)}, {selectedMarker.data.location.longitude.toFixed(4)}
-                  </Text>
+                  <View style={styles.metaRow}>
+                    <NavIcon name="LOCATION" color={theme.colors.textSecondary} size={12} />
+                    <Text style={[styles.coordsText, { color: theme.colors.textSecondary }]}>
+                      {selectedMarker.data.location.latitude.toFixed(4)},{' '}
+                      {selectedMarker.data.location.longitude.toFixed(4)}
+                    </Text>
+                  </View>
                 ) : null}
 
                 {onSelectResource && (
                   <TouchableOpacity
                     style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
                     onPress={() => onSelectResource(selectedMarker.data.resource_id)}
+                    activeOpacity={0.8}
                   >
-                    <Text style={styles.actionButtonText}>View Resource Details →</Text>
+                    <Text style={styles.actionButtonText}>VIEW RESOURCE →</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -475,25 +730,34 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             {selectedMarker.type === 'HAZARD' && (
               <View>
                 <View style={styles.badgeRow}>
-                  <View style={[styles.badge, { backgroundColor: getSeverityColor(selectedMarker.data.severity) }]}>
+                  <View
+                    style={[
+                      styles.badge,
+                      { backgroundColor: getSeverityColor(selectedMarker.data.severity) },
+                    ]}
+                  >
                     <Text style={styles.badgeText}>{selectedMarker.data.severity}</Text>
                   </View>
                   <View style={[styles.badge, { backgroundColor: theme.colors.surfaceBorder }]}>
-                    <Text style={[styles.badgeText, { color: theme.colors.textPrimary }]}>{selectedMarker.data.status}</Text>
+                    <Text style={[styles.badgeText, { color: theme.colors.textPrimary }]}>
+                      STATUS: {selectedMarker.data.status}
+                    </Text>
                   </View>
                 </View>
 
                 <Text style={[styles.sheetSummary, { color: theme.colors.textSecondary }]}>
-                  Active hazard flagged in offline road graph network. Exercise caution around geometry perimeter.
+                  Active hazard flagged in offline road graph network. Exercise caution around geometry
+                  perimeter.
                 </Text>
 
                 {selectedMarker.data.source_incident_id && onSelectIncident ? (
                   <TouchableOpacity
                     style={[styles.secondaryButton, { borderColor: theme.colors.surfaceBorder }]}
                     onPress={() => onSelectIncident(selectedMarker.data.source_incident_id!)}
+                    activeOpacity={0.8}
                   >
                     <Text style={[styles.secondaryButtonText, { color: theme.colors.primary }]}>
-                      View Linked Incident #{selectedMarker.data.source_incident_id} →
+                      VIEW LINKED INCIDENT #{selectedMarker.data.source_incident_id} →
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -504,13 +768,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             {selectedMarker.type === 'LOCATION' && (
               <View>
                 <Text style={[styles.sheetSummary, { color: theme.colors.textSecondary }]}>
-                  GNSS offline position lock fix acquired.
+                  Local GNSS position fix acquired.
                 </Text>
-                <Text style={[styles.coordsText, { color: theme.colors.textPrimary, fontWeight: '700' }]}>
-                  Lat: {selectedMarker.data.latitude.toFixed(5)}, Lon: {selectedMarker.data.longitude.toFixed(5)}
-                </Text>
-                <Text style={[styles.coordsText, { color: theme.colors.textSecondary }]}>
-                  Estimated Accuracy: ±{selectedMarker.data.accuracy_m} meters
+                <View style={styles.metaRow}>
+                  <NavIcon name="LOCATION" color={theme.colors.primary} size={14} />
+                  <Text style={[styles.coordsText, { color: theme.colors.textPrimary, fontWeight: '700' }]}>
+                    Lat: {selectedMarker.data.latitude.toFixed(5)}, Lon:{' '}
+                    {selectedMarker.data.longitude.toFixed(5)}
+                  </Text>
+                </View>
+                <Text style={[styles.coordsText, { color: theme.colors.textSecondary, marginTop: 4 }]}>
+                  Accuracy Radius: ±{selectedMarker.data.accuracy_m} meters
                 </Text>
               </View>
             )}
@@ -524,22 +792,40 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    position: 'relative',
   },
-  headerContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
+  floatingHeader: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    zIndex: 20,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
-  titleRow: {
+  headerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
+  brandTitleGroup: {
+    flex: 1,
+  },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
   },
   offlineBadge: {
     flexDirection: 'row',
@@ -550,124 +836,59 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   offlineBadgeDot: {
-    fontSize: 10,
+    fontSize: 8,
     marginRight: 4,
   },
   offlineBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   filterRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginVertical: 4,
+    gap: 6,
   },
   filterChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  locationBanner: {
-    marginTop: 6,
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  locationBannerText: {
-    fontSize: 12,
-  },
-  mapCanvasContainer: {
     flex: 1,
-  },
-  mapCanvas: {
-    flex: 1,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  gridLineHorizontal1: {
-    position: 'absolute',
-    top: '33%',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  gridLineHorizontal2: {
-    position: 'absolute',
-    top: '66%',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  gridLineVertical1: {
-    position: 'absolute',
-    left: '33%',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  gridLineVertical2: {
-    position: 'absolute',
-    left: '66%',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  scaleOverlay: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  scaleText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  legendOverlay: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  legendTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 1,
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 44,
+    gap: 4,
   },
-  legendText: {
+  filterChipText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  locationBanner: {
+    marginTop: 8,
+    padding: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  locationBannerText: {
     fontSize: 11,
     fontWeight: '600',
+    flex: 1,
   },
-  markerTouch: {
-    position: 'absolute',
-    marginLeft: -16,
-    marginTop: -16,
-    width: 32,
-    height: 32,
+  mapContainer: {
+    flex: 1,
+  },
+  mapView: {
+    flex: 1,
+  },
+  markerAnchor: {
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 10,
   },
   incidentMarker: {
     width: 28,
@@ -676,39 +897,31 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
-  },
-  incidentMarkerText: {
-    fontSize: 14,
+    elevation: 5,
   },
   resourceMarker: {
     width: 26,
     height: 26,
     borderRadius: 6,
-    transform: [{ rotate: '45deg' }],
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 3,
+    elevation: 4,
   },
   hazardMarker: {
     width: 26,
     height: 26,
-    borderRadius: 4,
+    borderRadius: 6,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 3,
-  },
-  markerText: {
-    fontSize: 12,
-    transform: [{ rotate: '-45deg' }],
+    elevation: 4,
   },
   selectedMarkerHalo: {
     borderWidth: 3,
-    transform: [{ scale: 1.2 }],
+    transform: [{ scale: 1.25 }],
   },
-  locationPulse: {
+  locationRing: {
     width: 24,
     height: 24,
     borderRadius: 12,
@@ -722,33 +935,17 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
   },
-  controlsContainer: {
-    position: 'absolute',
-    bottom: 20,
-    right: 16,
-    alignItems: 'center',
-  },
-  controlButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   loadingText: {
     marginTop: 10,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
-  errorOverlay: {
+  errorBanner: {
     position: 'absolute',
     bottom: 80,
     left: 16,
@@ -758,24 +955,88 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   errorText: {
-    fontSize: 13,
+    fontSize: 12,
     marginBottom: 6,
   },
   retryButton: {
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
+  floatingLegend: {
+    position: 'absolute',
+    left: 12,
+    bottom: 120,
+    zIndex: 20,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    minWidth: 180,
+    elevation: 5,
+  },
+  legendHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  legendTitle: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  legendClose: {
+    padding: 2,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 3,
+    gap: 6,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  controlsContainer: {
+    position: 'absolute',
+    right: 12,
+    zIndex: 20,
+    alignItems: 'center',
+  },
+  controlButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 5,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
   bottomSheet: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    zIndex: 30,
     maxHeight: 280,
     borderTopWidth: 1,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 16,
-    elevation: 8,
+    elevation: 10,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -783,72 +1044,95 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  sheetHeaderTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  sheetTitleGroup: {
     flex: 1,
+  },
+  sheetPreTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
   sheetTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    flex: 1,
+    fontWeight: '800',
+    marginTop: 2,
   },
   closeButton: {
-    padding: 4,
+    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   closeText: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   sheetContent: {
-    flex: 1,
+    maxHeight: 180,
   },
   badgeRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 8,
   },
   badge: {
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 4,
-    marginRight: 6,
   },
   badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
     color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   sheetSummary: {
     fontSize: 13,
     lineHeight: 18,
-    marginBottom: 8,
+    marginBottom: 10,
+  },
+  capacityText: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
   },
   coordsText: {
     fontSize: 12,
-    marginBottom: 6,
   },
   actionButton: {
-    marginTop: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    minHeight: 44,
   },
   actionButtonText: {
     color: '#FFFFFF',
-    fontWeight: '700',
     fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   secondaryButton: {
-    marginTop: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    minHeight: 44,
   },
   secondaryButtonText: {
-    fontWeight: '600',
     fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
 });
