@@ -138,7 +138,8 @@ export class PeopleService {
     if (this.dataEngine) {
       try {
         await this.dataEngine.saveMessage(messageDto);
-      } catch (_err) {
+      } catch (err) {
+        console.error(err);
         // Safe fallback
       }
     }

@@ -8,15 +8,15 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { MapService, DEFAULT_BAY_AREA_REGION } from '../services/MapService';
+import { MapService } from '../services/MapService';
 import { DevGeoEngine } from '../adapters/geo/DevGeoEngine';
 import { DevDataEngine } from '../adapters/data/DevDataEngine';
-import { useMap, SelectedMarker } from '../hooks/useMap';
+import { useMap } from '../hooks/useMap';
 import { NavIcon } from '../components/NavIcon';
-import type { IncidentDto } from '../contracts/data/IncidentDto';
-import type { ResourceDto } from '../contracts/data/ResourceDto';
-import type { HazardDto } from '../contracts/geo/HazardDto';
-import type { LocationDto } from '../contracts/geo/LocationDto';
+
+
+
+
 
 // MapLibre React Native
 import { Map as MapView, Camera, Marker } from '@maplibre/maplibre-react-native';

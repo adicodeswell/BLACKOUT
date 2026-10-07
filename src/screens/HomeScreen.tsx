@@ -61,7 +61,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         if (peersRes.ok) {
           setPeers(peersRes.data);
         }
-      } catch (_err) {
+      } catch (err) {
+        console.error(err);
         setNetworkStatus('UNAVAILABLE');
       }
     }
@@ -72,7 +73,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         if (incRes.ok) {
           setIncidents(incRes.data.slice(0, 3));
         }
-      } catch (_err) {
+      } catch (err) {
+        console.error(err);
         // Safe fallback
       }
     }
