@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, BackHandler, Platform, NativeModules } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
+import { useServices } from '../services/ServiceContext';
 import { HomeScreen } from '../screens/HomeScreen';
 import { MapScreen } from '../screens/MapScreen';
 import { AlertsScreen } from '../screens/AlertsScreen';
@@ -15,17 +16,11 @@ import { AddResourceScreen } from '../screens/AddResourceScreen';
 import { PeopleScreen } from '../screens/PeopleScreen';
 import { PeerDetailScreen } from '../screens/PeerDetailScreen';
 import { DirectMessageScreen } from '../screens/DirectMessageScreen';
-import { EmergencyReportService } from '../services/EmergencyReportService';
-import { IncidentService } from '../services/IncidentService';
-import { ResourceService } from '../services/ResourceService';
-import { MapService } from '../services/MapService';
-import { PeopleService } from '../services/PeopleService';
-import { DevDataEngine } from '../adapters/data/DevDataEngine';
-import { RoomDataEngineAdapter } from '../adapters/data/RoomDataEngineAdapter';
-import { DevGeoEngine } from '../adapters/geo/DevGeoEngine';
-import { GeoEngineAdapter } from '../adapters/geo/GeoEngineAdapter';
-import { NetworkEngineAdapter } from '../adapters/network/NetworkEngineAdapter';
-import { NativeNetworkEngineAdapter } from '../adapters/network/NativeNetworkEngineAdapter';
+import type { EmergencyReportService } from '../services/EmergencyReportService';
+import type { IncidentService } from '../services/IncidentService';
+import type { ResourceService } from '../services/ResourceService';
+import type { MapService } from '../services/MapService';
+import type { PeopleService } from '../services/PeopleService';
 
 type TabName = 'Home' | 'Map' | 'Alerts' | 'Resources' | 'People' | 'Profile' | 'Settings';
 type ScreenState = TabName | 'EmergencyReport' | 'IncidentDetail' | 'ResourceDetail' | 'AddResource' | 'PeerDetail' | 'DirectMessage';
@@ -47,40 +42,21 @@ export const RootNavigator: React.FC<RootNavigatorProps> = ({
 }) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const contextServices = useServices();
+
+  const reportService = injectedReportService || contextServices.reportService;
+  const incidentService = injectedIncidentService || contextServices.incidentService;
+  const resourceService = injectedResourceService || contextServices.resourceService;
+  const mapService = injectedMapService || contextServices.mapService;
+  const peopleService = injectedPeopleService || contextServices.peopleService;
+  const networkAdapter = contextServices.networkEngine;
+
   const [activeTab, setActiveTab] = useState<TabName>('Home');
   const [currentScreen, setCurrentScreen] = useState<ScreenState>('Home');
 
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | undefined>(undefined);
   const [selectedResourceId, setSelectedResourceId] = useState<string | undefined>(undefined);
   const [selectedPeerId, setSelectedPeerId] = useState<string | undefined>(undefined);
-
-  // Initialize DataEngine & GeoEngine fallback and Services lazily
-  const { reportService, incidentService, resourceService, mapService, peopleService, networkAdapter } = React.useMemo(() => {
-    const dataEngine = (Platform.OS === 'android' && NativeModules.BlackoutDataModule)
-      ? new RoomDataEngineAdapter()
-      : new DevDataEngine();
-    
-    const devGeoEngine = new DevGeoEngine();
-    const geoAdapter = new GeoEngineAdapter(devGeoEngine);
-    const nAdapter = (Platform.OS === 'android' && NativeModules.BlackoutNativeModule)
-      ? new NativeNetworkEngineAdapter()
-      : new NetworkEngineAdapter({} as any);
-
-    const rService = injectedReportService || new EmergencyReportService(dataEngine, geoAdapter, nAdapter);
-    const iService = injectedIncidentService || new IncidentService(dataEngine);
-    const resService = injectedResourceService || new ResourceService(dataEngine);
-    const mService = injectedMapService || new MapService(geoAdapter, dataEngine);
-    const pService = injectedPeopleService || new PeopleService(nAdapter, dataEngine);
-
-    return {
-      reportService: rService,
-      incidentService: iService,
-      resourceService: resService,
-      mapService: mService,
-      peopleService: pService,
-      networkAdapter: nAdapter,
-    };
-  }, [injectedReportService, injectedIncidentService, injectedResourceService, injectedMapService, injectedPeopleService]);
 
   const navigateTo = (screen: ScreenState, id?: string) => {
     if (screen === 'EmergencyReport') {
@@ -274,13 +250,27 @@ export const RootNavigator: React.FC<RootNavigatorProps> = ({
             currentScreen !== 'PeerDetail' &&
             currentScreen !== 'DirectMessage' &&
             activeTab === tab;
+
+          const getTabIcon = (name: TabName) => {
+            switch (name) {
+              case 'Home': return '🏠';
+              case 'Map': return '🗺️';
+              case 'Alerts': return '🚨';
+              case 'Resources': return '📦';
+              case 'People': return '👥';
+              case 'Profile': return '👤';
+              case 'Settings': return '⚙️';
+            }
+          };
+
           return (
             <TouchableOpacity
               key={tab}
-              style={styles.tabItem}
+              style={[styles.tabItem, isActive && { backgroundColor: `${theme.colors.tabBarActive}15`, borderRadius: theme.radius.md }]}
               onPress={() => navigateTo(tab)}
               activeOpacity={0.7}
             >
+              <Text style={{ fontSize: 14, marginBottom: 2 }}>{getTabIcon(tab)}</Text>
               <Text
                 style={[
                   styles.tabLabel,

@@ -3,12 +3,17 @@ export const lightTheme = {
   colors: {
     background: '#F8F9FA',
     surface: '#FFFFFF',
+    surfaceElevated: '#F1F3F5',
     surfaceBorder: '#E9ECEF',
+
     textPrimary: '#1A1D20',
     textSecondary: '#6C757D',
+    textMuted: '#A0AEC0',
+
     primary: '#0D6EFD',
     primaryDanger: '#DC3545',
     accent: '#0D6EFD',
+
     tabBarBackground: '#FFFFFF',
     tabBarBorder: '#E9ECEF',
     tabBarActive: '#0D6EFD',
@@ -33,7 +38,12 @@ export const lightTheme = {
     statusResolved: '#198754',
     statusExpired: '#6C757D',
 
-    // Alert Surfaces
+    // Network Status
+    networkActive: '#198754',
+    networkConnecting: '#D97706',
+    networkStopped: '#DC3545',
+
+    // Alert & Surface States
     warningBg: '#FFF3CD',
     warningBorder: '#FFECB5',
     warningText: '#664D03',
@@ -45,6 +55,10 @@ export const lightTheme = {
     infoBg: '#CFF4FC',
     infoBorder: '#B6EFFB',
     infoText: '#055160',
+
+    successBg: '#D1E7DD',
+    successBorder: '#BADBCC',
+    successText: '#0F5132',
   },
   spacing: {
     xs: 4,
@@ -52,12 +66,38 @@ export const lightTheme = {
     md: 16,
     lg: 24,
     xl: 32,
+    xxl: 48,
+  },
+  radius: {
+    sm: 6,
+    md: 10,
+    lg: 14,
+    pill: 9999,
   },
   typography: {
-    headerSize: 22,
-    subheaderSize: 16,
-    bodySize: 14,
-    captionSize: 12,
+    display: { fontSize: 26, fontWeight: '800' as const },
+    heading: { fontSize: 20, fontWeight: '700' as const },
+    title: { fontSize: 16, fontWeight: '700' as const },
+    body: { fontSize: 14, fontWeight: '400' as const },
+    bodySmall: { fontSize: 12, fontWeight: '400' as const },
+    label: { fontSize: 11, fontWeight: '700' as const, letterSpacing: 0.8 },
+    caption: { fontSize: 10, fontWeight: '600' as const },
+  },
+  elevation: {
+    card: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    elevated: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 4,
+    },
   },
 };
 
@@ -66,12 +106,17 @@ export const darkTheme: typeof lightTheme = {
   colors: {
     background: '#0D0F12',
     surface: '#16191E',
+    surfaceElevated: '#1F242D',
     surfaceBorder: '#262A33',
+
     textPrimary: '#F8F9FA',
     textSecondary: '#9CA3AF',
+    textMuted: '#6B7280',
+
     primary: '#3B82F6',
     primaryDanger: '#EF4444',
     accent: '#3B82F6',
+
     tabBarBackground: '#16191E',
     tabBarBorder: '#262A33',
     tabBarActive: '#3B82F6',
@@ -96,7 +141,12 @@ export const darkTheme: typeof lightTheme = {
     statusResolved: '#10B981',
     statusExpired: '#6B7280',
 
-    // Alert Surfaces
+    // Network Status
+    networkActive: '#10B981',
+    networkConnecting: '#F59E0B',
+    networkStopped: '#EF4444',
+
+    // Alert & Surface States
     warningBg: '#2D2305',
     warningBorder: '#4A3B0B',
     warningText: '#FCD34D',
@@ -108,6 +158,10 @@ export const darkTheme: typeof lightTheme = {
     infoBg: '#0A2540',
     infoBorder: '#103B66',
     infoText: '#7DD3FC',
+
+    successBg: '#062C1E',
+    successBorder: '#0E5A3D',
+    successText: '#6EE7B7',
   },
   spacing: {
     xs: 4,
@@ -115,14 +169,39 @@ export const darkTheme: typeof lightTheme = {
     md: 16,
     lg: 24,
     xl: 32,
+    xxl: 48,
+  },
+  radius: {
+    sm: 6,
+    md: 10,
+    lg: 14,
+    pill: 9999,
   },
   typography: {
-    headerSize: 22,
-    subheaderSize: 16,
-    bodySize: 14,
-    captionSize: 12,
+    display: { fontSize: 26, fontWeight: '800' as const },
+    heading: { fontSize: 20, fontWeight: '700' as const },
+    title: { fontSize: 16, fontWeight: '700' as const },
+    body: { fontSize: 14, fontWeight: '400' as const },
+    bodySmall: { fontSize: 12, fontWeight: '400' as const },
+    label: { fontSize: 11, fontWeight: '700' as const, letterSpacing: 0.8 },
+    caption: { fontSize: 10, fontWeight: '600' as const },
+  },
+  elevation: {
+    card: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    elevated: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      elevation: 4,
+    },
   },
 };
 
 export type Theme = typeof lightTheme;
-

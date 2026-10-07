@@ -260,13 +260,13 @@ Member 4 owns the React Native frontend application:
 - **Phase 7A — Native Network Engine Integration ✅**
 - **Phase 7B — Offline Smart AI Classifier & Evidence UI ✅**
 - **Phase 8A — Direct People & Messaging UI (Peers, Conversations, Direct Message) ✅**
+- **Phase 9 — Application Composition Root / ServiceProvider ✅**
 
 ### D. Remaining Work Checklist
 
 | Task | Why Needed | Existing File/Interface | Expected Result | Dependencies | Suggested Verification |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **1. Application Composition Root** | Clean dependency injection container | [`App.tsx`](file:///C:/Users/rajpu/Desktop/BLACKOUT/App.tsx) | Centralized ServiceProvider initializes singletons | Adapter contracts | Unit tests inject mock adapters cleanly |
-| **2. Connect Native Geo Adapter** | Replace `DevGeoEngine` with native location stream | `src/adapters/geo/NativeGeoEngineAdapter.ts` | Calls native `BlackoutGeoModule` for GNSS fixes & $A^*$ routing | Member 3 `BlackoutGeoModule` bridge | Open map on phone; verify native GPS fix |
+| **1. Connect Native Geo Adapter** | Replace `DevGeoEngine` with native location stream | `src/adapters/geo/NativeGeoEngineAdapter.ts` | Calls native `BlackoutGeoModule` for GNSS fixes & $A^*$ routing | Member 3 `BlackoutGeoModule` bridge | Open map on phone; verify native GPS fix |
 
 ### E. Acceptance Criteria
 Member 4 module completion requires:
