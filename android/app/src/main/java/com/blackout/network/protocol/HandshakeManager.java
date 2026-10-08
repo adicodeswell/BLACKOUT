@@ -14,9 +14,11 @@ public class HandshakeManager {
     private static final String TAG = "HandshakeManager";
     
     private final String localDeviceId;
+    private final ConnectionManager connectionManager;
 
-    public HandshakeManager(String localDeviceId) {
+    public HandshakeManager(String localDeviceId, ConnectionManager connectionManager) {
         this.localDeviceId = localDeviceId;
+        this.connectionManager = connectionManager;
     }
 
     /**
@@ -52,6 +54,8 @@ public class HandshakeManager {
                         .payloadHash("none")
                         .payload("{\"ack_to\": \"" + msg.getMessageId() + "\"}")
                         .build();
+                // Rename the connection to the true sender's ID!
+                connectionManager.updateConnectionId(peer.getPeerId(), msg.getOriginDeviceId());
                 sendToPeer(peer, ack);
                 Log.i(TAG, "Sent HELLO_ACK to peer: " + msg.getOriginDeviceId());
                 break;

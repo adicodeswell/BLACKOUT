@@ -18,6 +18,7 @@ export type MessageListener = (message: MessageDto) => void;
 export type PeerListener = (peers: PeerDto[]) => void;
 
 export class PeopleService {
+  private localNodeId = "node_" + Math.random().toString(36).substring(2, 9);
   private networkEngine: NetworkEngine;
   private dataEngine?: DataEngine;
   private conversations: Map<string, MessageDto[]> = new Map();
@@ -27,6 +28,7 @@ export class PeopleService {
 
   constructor(networkEngine: NetworkEngine, dataEngine?: DataEngine) {
     this.networkEngine = networkEngine;
+    if ((this.networkEngine as any).localNodeId !== undefined) { (this.networkEngine as any).localNodeId = this.localNodeId; }
     this.dataEngine = dataEngine;
 
     // Subscribe to incoming network events
@@ -38,7 +40,7 @@ export class PeopleService {
   private handleNetworkEvent(event: NetworkEvent) {
     if (event.type === "MESSAGE_RECEIVED") {
       const msg = event.message;
-      if (msg.message_type === "DIRECT") {
+      if (msg.message_type === "DIRECT" || msg.message_type === "BROADCAST") {
         const peerId = msg.origin_device_id || "unknown-node";
         this.addMessageToConversation(peerId, msg);
 
@@ -119,7 +121,7 @@ export class PeopleService {
     const messageDto: MessageDto = {
       protocol_version: 1,
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      origin_device_id: "self-node-01",
+      origin_device_id: this.localNodeId,
       destination_device_id: targetPeerId,
       message_type: "DIRECT",
       created_at: Date.now(),
@@ -128,6 +130,11 @@ export class PeopleService {
       priority: "NORMAL",
       payload_hash: simpleHash(messageText),
       payload: { text: messageText },
+      encryption: {
+        algorithm: "AES_GCM",
+        key_id: "default-mesh-key",
+        nonce: "1234567890abcdef"
+      },
       signature: "sig_local_dev",
     };
 

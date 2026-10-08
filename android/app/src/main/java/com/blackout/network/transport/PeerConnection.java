@@ -16,7 +16,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class PeerConnection {
     private static final String TAG = "PeerConnection";
 
-    private final String peerId;
+    private String peerId;
     private final Socket socket;
     private final ConnectionListener listener;
 
@@ -113,5 +113,8 @@ public class PeerConnection {
 
     public String getPeerId() {
         return peerId;
+    }
+    public void setPeerId(String newId) {
+        this.peerId = newId;
     }
 }

@@ -4,6 +4,7 @@ import android.util.Log;
 import com.blackout.network.transport.ConnectionManager;
 import com.blackout.network.transport.PeerConnection;
 import org.json.JSONException;
+import com.blackout.network.reliability.MessageDeduplicator;
 
 /**
  * The Receive Pipeline. Parses incoming bytes, routes handshakes back to the HandshakeManager,
@@ -15,9 +16,11 @@ public class MessageHandler implements PeerConnection.ConnectionListener {
     private final ConnectionManager connectionManager;
     private final HandshakeManager handshakeManager;
     private final AppMessageListener appListener;
+    private final MessageDeduplicator deduplicator = new MessageDeduplicator();
 
     public interface AppMessageListener {
         void onApplicationMessage(NetworkMessage message);
+        void onPeerDisconnected(String peerId);
     }
 
     public MessageHandler(ConnectionManager connectionManager, HandshakeManager handshakeManager, AppMessageListener appListener) {
@@ -31,6 +34,13 @@ public class MessageHandler implements PeerConnection.ConnectionListener {
         try {
             NetworkMessage msg = MessageSerializer.deserialize(payload);
             MessageValidator.validate(msg);
+
+            // Mesh Routing Loop Prevention
+            if (deduplicator.isDuplicate(msg.getMessageId())) {
+                Log.d(TAG, "Dropped duplicate mesh message: " + msg.getMessageId());
+                return;
+            }
+            deduplicator.recordMessage(msg.getMessageId());
 
             MessageType type = msg.getMessageType();
             
@@ -58,5 +68,8 @@ public class MessageHandler implements PeerConnection.ConnectionListener {
     public void onDisconnected(String peerId) {
         Log.i(TAG, "Peer disconnected in MessageHandler: " + peerId);
         connectionManager.removeConnection(peerId);
+        if (appListener != null) {
+            appListener.onPeerDisconnected(peerId);
+        }
     }
 }

@@ -9,6 +9,8 @@ import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pDeviceList;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.util.Log;
+import android.os.Handler;
+import android.os.Looper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +20,7 @@ import java.util.List;
  * Discovers peers and registers broadcast receivers for P2P events.
  */
 import android.net.wifi.p2p.WifiP2pConfig;
+import android.net.wifi.WpsInfo;
 import android.net.wifi.p2p.WifiP2pInfo;
 import java.net.Socket;
 import java.net.InetSocketAddress;
@@ -35,8 +38,17 @@ public class WifiDirectManager {
     
     private void connectToPeer(WifiP2pDevice device) {
         if (p2pManager == null || channel == null) return;
+        
+        // Prevent collision: only initiate if the device is actually AVAILABLE
+        if (device.status != android.net.wifi.p2p.WifiP2pDevice.AVAILABLE) {
+            Log.i(TAG, "Skipping connect to " + device.deviceName + " because status is " + device.status);
+            return;
+        }
+
         WifiP2pConfig config = new WifiP2pConfig();
         config.deviceAddress = device.deviceAddress;
+        config.wps.setup = WpsInfo.PBC; // Push Button Configuration (Standard)
+        
         p2pManager.connect(channel, config, new WifiP2pManager.ActionListener() {
             @Override
             public void onSuccess() { Log.i(TAG, "Successfully initiated connect to " + device.deviceName); }
@@ -83,9 +95,30 @@ public class WifiDirectManager {
         }
     };
 
+    private final Handler discoveryHandler = new Handler(Looper.getMainLooper());
+    private final Runnable discoveryRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (p2pManager != null && channel != null && !isGroupFormed) {
+                Log.i(TAG, "Aggressive Mesh Retry: Restarting Wi-Fi Direct Discovery...");
+                discoverPeersInternal();
+            }
+            // Retry every 15 seconds to find new nodes walking into range
+            discoveryHandler.postDelayed(this, 15000);
+        }
+    };
+
     @SuppressLint("MissingPermission")
     public void discoverPeers() {
         if (p2pManager == null || channel == null) return;
+        
+        // Start the continuous aggressive retry loop
+        discoveryHandler.removeCallbacks(discoveryRunnable);
+        discoveryHandler.post(discoveryRunnable);
+    }
+
+    @SuppressLint("MissingPermission")
+    private void discoverPeersInternal() {
         
         Log.i(TAG, "Initiating Wi-Fi Direct Peer Discovery...");
         
@@ -109,14 +142,25 @@ public class WifiDirectManager {
                                     if (info.groupFormed && !info.isGroupOwner) {
                                         // We are client, connect to GO
                                         new Thread(() -> {
-                                            try {
-                                                Socket socket = new Socket();
-                                                socket.connect(new InetSocketAddress(info.groupOwnerAddress, 18888), 10000);
-                                                if (connectionCallback != null) {
-                                                    connectionCallback.onClientConnectedToGroupOwner(socket);
+                                            int maxRetries = 5;
+                                            for (int i = 0; i < maxRetries; i++) {
+                                                try {
+                                                    Log.i(TAG, "Attempt " + (i+1) + " to connect to Group Owner...");
+                                                    Socket socket = new Socket();
+                                                    socket.connect(new InetSocketAddress(info.groupOwnerAddress, 18888), 10000);
+                                                    if (connectionCallback != null) {
+                                                        connectionCallback.onClientConnectedToGroupOwner(socket);
+                                                    }
+                                                    Log.i(TAG, "Successfully connected Client Socket to Group Owner!");
+                                                    break; // Success, exit retry loop
+                                                } catch (Exception e) {
+                                                    Log.e(TAG, "Failed to connect to Group Owner (Attempt " + (i+1) + ")", e);
+                                                    try {
+                                                        Thread.sleep(2000); // Wait 2s before retrying so the Server has time to boot
+                                                    } catch (InterruptedException ie) {
+                                                        break;
+                                                    }
                                                 }
-                                            } catch (Exception e) {
-                                                Log.e(TAG, "Failed to connect to Group Owner", e);
                                             }
                                         }).start();
                                     }
@@ -145,6 +189,7 @@ public class WifiDirectManager {
     }
 
     public void stop() {
+        discoveryHandler.removeCallbacks(discoveryRunnable);
         if (receiver != null && context != null) {
             try {
                 context.unregisterReceiver(receiver);

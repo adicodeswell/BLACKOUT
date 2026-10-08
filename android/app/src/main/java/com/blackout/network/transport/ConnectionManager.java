@@ -18,6 +18,15 @@ public class ConnectionManager {
     /**
      * Registers and starts a new peer connection.
      */
+        public void updateConnectionId(String oldId, String newId) {
+        PeerConnection conn = connections.remove(oldId);
+        if (conn != null) {
+            conn.setPeerId(newId);
+            connections.put(newId, conn);
+            Log.i(TAG, "Renamed connection " + oldId + " to " + newId);
+        }
+    }
+
     public void addConnection(PeerConnection connection) {
         String peerId = connection.getPeerId();
         

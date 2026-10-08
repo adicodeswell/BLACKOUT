@@ -53,7 +53,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void initialize(Promise promise) {
+    public void initialize(String nodeId, Promise promise) {
         try {
             if (networkEngine != null) {
                 promise.resolve(null);
@@ -64,12 +64,23 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             DeviceIdentity identity = new DeviceIdentity(ctx);
             connectionManager = new ConnectionManager();
             outgoingSendManager = new OutgoingSendManager(connectionManager);
-            HandshakeManager handshakeManager = new HandshakeManager(identity.getDeviceId());
+            HandshakeManager handshakeManager = new HandshakeManager(nodeId, connectionManager);
             
             MessageHandler messageHandler = new MessageHandler(connectionManager, handshakeManager, new MessageHandler.AppMessageListener() {
                 @Override
                 public void onApplicationMessage(NetworkMessage message) {
                     emitMessageToJS(message);
+                }
+                @Override
+                public void onPeerDisconnected(String peerId) {
+                    WritableMap event = com.facebook.react.bridge.Arguments.createMap();
+                    event.putString("type", "PEER_DISCONNECTED");
+                    event.putString("peer_id", peerId);
+                    try {
+                        getReactApplicationContext()
+                            .getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                            .emit("NativeEvent", event);
+                    } catch (Exception e) {}
                 }
             });
             
@@ -78,6 +89,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                 PeerConnection peer = new PeerConnection("UNKNOWN-PEER", socket, messageHandler);
                 connectionManager.addConnection(peer);
                 peer.start();
+                handshakeManager.initiateHandshake(peer);
             });
 
             // Inject hardware adapters
@@ -89,6 +101,16 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
 
             BleDiscoveryEngine bleEngine = new BleDiscoveryEngine(bluetoothAdapter);
             WifiDirectManager wifiManager = new WifiDirectManager(wifiP2pManager, channel, ctx);
+            wifiManager.setConnectionCallback(new WifiDirectManager.ConnectionCallback() {
+                @Override
+                public void onClientConnectedToGroupOwner(java.net.Socket socket) {
+                    PeerConnection peer = new PeerConnection("CLIENT-SOCKET", socket, messageHandler);
+                    connectionManager.addConnection(peer);
+                    peer.start();
+                    // Send dummy bytes to unblock read loop or handshake if needed
+                    handshakeManager.initiateHandshake(peer);
+                }
+            });
 
             networkEngine = new AndroidNetworkEngine(identity, bleEngine, wifiManager, connectionManager, networkServer);
             
@@ -199,7 +221,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                     for (String peerId : connectedIds) {
                         WritableMap peer = Arguments.createMap();
                         peer.putString("peer_id", peerId);
-                        peer.putString("name", "Mesh Node " + peerId.substring(0, Math.min(4, peerId.length())));
+                        peer.putString("name", "Node " + peerId.substring(Math.max(0, peerId.length() - 4)));
                         peer.putString("connection_state", "CONNECTED");
                         peer.putInt("signal_strength", 100);
                         peer.putDouble("last_seen", System.currentTimeMillis());

@@ -26,9 +26,9 @@ export class NativeBridgeAdapter {
     }
   }
 
-  async initialize(): Promise<Result<void>> {
+  async initialize(nodeId: string): Promise<Result<void>> {
     try {
-      await BlackoutNativeModule.initialize();
+      await BlackoutNativeModule.initialize(nodeId);
       return { ok: true, data: undefined };
     } catch (error) {
       return { ok: false, error: mapError(error) };
@@ -81,6 +81,14 @@ export class NativeBridgeAdapter {
           event: {
             type: 'MESSAGE_RECEIVED',
             message: parsedMessage,
+          }
+        });
+      } else if (rawEvent.type === 'PEER_DISCONNECTED' && rawEvent.peer_id) {
+        listener({
+          type: 'NETWORK',
+          event: {
+            type: 'PEER_DISCONNECTED',
+            peer_id: rawEvent.peer_id,
           }
         });
       }

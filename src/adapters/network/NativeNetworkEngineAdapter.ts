@@ -12,6 +12,7 @@ import { NativeBridgeAdapter } from "../native/NativeBridgeAdapter";
  * to native Android P2P mesh network engine via NativeBridgeAdapter / BlackoutNativeModule.
  */
 export class NativeNetworkEngineAdapter implements NetworkEngine {
+  public localNodeId: string = "";
   private readonly bridge: NativeBridgeAdapter;
 
   constructor(bridgeAdapter?: NativeBridgeAdapter) {
@@ -47,7 +48,7 @@ export class NativeNetworkEngineAdapter implements NetworkEngine {
 
   async start(): Promise<Result<void>> {
     await this.requestPermissions();
-    const initRes = await this.bridge.initialize();
+    const initRes = await this.bridge.initialize(this.localNodeId || "node_" + Math.random().toString(36).substring(2,9));
     if (!initRes.ok) {
       return initRes;
     }
