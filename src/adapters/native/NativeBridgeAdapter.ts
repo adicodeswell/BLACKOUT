@@ -44,6 +44,14 @@ export class NativeBridgeAdapter {
     }
   }
 
+  async getPeers(): Promise<any[]> {
+    return BlackoutNativeModule.getPeers();
+  }
+
+  async discoverPeers(): Promise<void> {
+    return BlackoutNativeModule.discoverPeers();
+  }
+
   async stopNetworking(): Promise<Result<void>> {
     try {
       await BlackoutNativeModule.stopNetworking();

@@ -9,6 +9,9 @@ import com.blackout.network.transport.ConnectionManager;
 import com.blackout.network.transport.NetworkServer;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import android.net.wifi.p2p.WifiP2pDevice;
 
 /**
  * The master class that ties the OS hardware scanners (BLE/WiFi) to our
@@ -77,6 +80,15 @@ public class AndroidNetworkEngine {
         if (connectionManager != null) connectionManager.disconnectAll();
         
         isRunning = false;
+    }
+
+    public List<WifiP2pDevice> getWifiPeers() {
+        if (wifiManager != null) return wifiManager.getDiscoveredPeers();
+        return new ArrayList<>();
+    }
+
+    public ConnectionManager getConnectionManager() {
+        return connectionManager;
     }
 
     public boolean isRunning() {

@@ -1,29 +1,71 @@
 const fs = require('fs');
-
 const path = 'android/app/src/main/java/com/blackout/bridge/BlackoutNativeModule.java';
 let code = fs.readFileSync(path, 'utf8');
 
-// Add imports
-code = code.replace(
-  'import android.util.Log;',
-  'import android.util.Log;\nimport android.bluetooth.BluetoothAdapter;\nimport android.bluetooth.BluetoothManager;\nimport android.content.Context;\nimport android.net.wifi.p2p.WifiP2pManager;'
-);
+const target1 = `import com.facebook.react.bridge.WritableMap;`;
+const inject1 = `import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.WritableArray;
+import java.util.List;
+import android.net.wifi.p2p.WifiP2pDevice;`;
+code = code.replace(target1, inject1);
 
-// Replace the null injection
-const nullInjectionTarget = `// Nulls represent the mocked hardware until Phase 7
-            BleDiscoveryEngine bleEngine = new BleDiscoveryEngine(null);
-            WifiDirectManager wifiManager = new WifiDirectManager(null, null);`;
+const target2 = `    @ReactMethod
+    public void addListener(String eventName) {`;
 
-const newInjection = `// Inject hardware adapters
-            BluetoothManager bluetoothManager = (BluetoothManager) ctx.getSystemService(Context.BLUETOOTH_SERVICE);
-            BluetoothAdapter bluetoothAdapter = bluetoothManager != null ? bluetoothManager.getAdapter() : null;
+const inject2 = `    @ReactMethod
+    public void getPeers(Promise promise) {
+        try {
+            WritableArray peersArray = Arguments.createArray();
+            if (networkEngine != null) {
+                // Get Wi-Fi Direct discovered peers
+                List<WifiP2pDevice> wifiPeers = networkEngine.getWifiPeers();
+                for (WifiP2pDevice device : wifiPeers) {
+                    WritableMap peer = Arguments.createMap();
+                    peer.putString("peer_id", device.deviceAddress);
+                    peer.putString("name", device.deviceName);
+                    peer.putString("connection_state", "DISCOVERED");
+                    peer.putInt("signal_strength", 80);
+                    peer.putDouble("last_seen", System.currentTimeMillis());
+                    peer.putString("transport_type", "WIFI_DIRECT");
+                    peersArray.pushMap(peer);
+                }
+                
+                // Get Active TCP Connections
+                if (connectionManager != null) {
+                    List<String> connectedIds = connectionManager.getActivePeerIds();
+                    for (String peerId : connectedIds) {
+                        WritableMap peer = Arguments.createMap();
+                        peer.putString("peer_id", peerId);
+                        peer.putString("name", "Mesh Node " + peerId.substring(0, Math.min(4, peerId.length())));
+                        peer.putString("connection_state", "CONNECTED");
+                        peer.putInt("signal_strength", 100);
+                        peer.putDouble("last_seen", System.currentTimeMillis());
+                        peer.putString("transport_type", "WIFI_DIRECT");
+                        peersArray.pushMap(peer);
+                    }
+                }
+            }
+            promise.resolve(peersArray);
+        } catch (Exception e) {
+            promise.reject("GET_PEERS_ERROR", e);
+        }
+    }
 
-            WifiP2pManager wifiP2pManager = (WifiP2pManager) ctx.getSystemService(Context.WIFI_P2P_SERVICE);
-            WifiP2pManager.Channel channel = wifiP2pManager != null ? wifiP2pManager.initialize(ctx, ctx.getMainLooper(), null) : null;
+    @ReactMethod
+    public void discoverPeers(Promise promise) {
+        try {
+            if (networkEngine != null) {
+                promise.resolve(null);
+            } else {
+                promise.reject("ENGINE_NOT_READY", "Initialize the engine first");
+            }
+        } catch (Exception e) {
+            promise.reject("DISCOVER_ERROR", e);
+        }
+    }
 
-            BleDiscoveryEngine bleEngine = new BleDiscoveryEngine(bluetoothAdapter);
-            WifiDirectManager wifiManager = new WifiDirectManager(wifiP2pManager, channel, ctx);`;
+    @ReactMethod
+    public void addListener(String eventName) {`;
 
-code = code.replace(nullInjectionTarget, newInjection);
-
+code = code.replace(target2, inject2);
 fs.writeFileSync(path, code);

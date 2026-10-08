@@ -34,7 +34,7 @@ const DARK_MAP_STYLE: any = {
   sources: {
     demotiles: {
       type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
       tileSize: 256,
       attribution: '© MapLibre © OpenStreetMap contributors',
     },
@@ -69,7 +69,7 @@ const LIGHT_MAP_STYLE: any = {
   sources: {
     demotiles: {
       type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
       tileSize: 256,
       attribution: '© MapLibre © OpenStreetMap contributors',
     },
@@ -95,6 +95,19 @@ const LIGHT_MAP_STYLE: any = {
       },
     },
   ],
+};
+
+const getCategoryIcon = (category: string) => {
+  switch (category) {
+    case 'FIRE': return 'FIRE';
+    case 'MEDICAL': return 'MEDICAL';
+    case 'FOOD': return 'FOOD';
+    case 'WATER': return 'WATER';
+    case 'SHELTER': return 'SHELTER';
+    case 'INFRASTRUCTURE_COLLAPSE': return 'BLOCKED_ROAD';
+    case 'ROAD_BLOCKED': return 'BLOCKED_ROAD';
+    default: return 'WARNING';
+  }
 };
 
 export const MapScreen: React.FC<MapScreenProps> = ({
@@ -199,141 +212,37 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
-  const currentMapStyle = theme.mode === 'dark' ? DARK_MAP_STYLE : LIGHT_MAP_STYLE;
+  const currentMapStyle = useMemo(() => {
+    const baseStyle = theme.mode === 'dark' ? DARK_MAP_STYLE : LIGHT_MAP_STYLE;
+    
+    // If we have an offline MBTiles file extracted to the device, override the tile source
+    if (offlineMapResult?.path) {
+      return {
+        ...baseStyle,
+        sources: {
+          ...baseStyle.sources,
+          demotiles: {
+            ...baseStyle.sources.demotiles,
+            // tiles: [`mbtiles://${offlineMapResult.path}`] // UNCOMMENT THIS WHEN YOU HAVE A REAL 50MB .mbtiles FILE
+            // Fallback gets dynamically chosen based on theme, we shouldn't hardcode OSM here.
+            // Let's use baseStyle's tiles instead of hardcoding OSM.
+            tiles: baseStyle.sources.demotiles.tiles // Temporary online fallback using base style's retina tiles
+          }
+        }
+      };
+    }
+    return baseStyle;
+  }, [theme.mode, offlineMapResult]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* 1. Floating Operational Header */}
-      <View
-        style={[
-          styles.floatingHeader,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.surfaceBorder,
-          },
-        ]}
-      >
-        <View style={styles.headerTitleRow}>
-          <View style={styles.brandTitleGroup}>
-            <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>
-              BLACKOUT MAP
-            </Text>
-            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
-              Local emergency intelligence
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.offlineBadge,
-              {
-                backgroundColor: offlineMapResult?.available ? theme.colors.infoBg : theme.colors.warningBg,
-                borderColor: offlineMapResult?.available ? theme.colors.infoBorder : theme.colors.warningBorder,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.offlineBadgeDot,
-                { color: offlineMapResult?.available ? theme.colors.confidenceConfirmed : theme.colors.warningText },
-              ]}
-            >
-              ●
-            </Text>
-            <Text
-              style={[
-                styles.offlineBadgeText,
-                { color: offlineMapResult?.available ? theme.colors.infoText : theme.colors.warningText },
-              ]}
-            >
-              {offlineMapResult?.available ? 'OFFLINE READY' : 'LOCAL GEO ENGINE'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Filter Toggle Chips */}
-        <View style={styles.filterRow}>
-          <TouchableOpacity
-            style={[
-              styles.filterChip,
-              filterIncidents
-                ? { backgroundColor: theme.colors.dangerBg, borderColor: theme.colors.primaryDanger }
-                : { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder },
-            ]}
-            onPress={() => setFilterIncidents(!filterIncidents)}
-            activeOpacity={0.7}
-          >
-            <NavIcon
-              name="Alerts"
-              color={filterIncidents ? theme.colors.primaryDanger : theme.colors.textSecondary}
-              size={14}
-            />
-            <Text
-              style={[
-                styles.filterChipText,
-                { color: filterIncidents ? theme.colors.dangerText : theme.colors.textSecondary },
-              ]}
-            >
-              INCIDENTS ({incidents.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.filterChip,
-              filterResources
-                ? { backgroundColor: theme.colors.infoBg, borderColor: theme.colors.accent }
-                : { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder },
-            ]}
-            onPress={() => setFilterResources(!filterResources)}
-            activeOpacity={0.7}
-          >
-            <NavIcon
-              name="Resources"
-              color={filterResources ? theme.colors.accent : theme.colors.textSecondary}
-              size={14}
-            />
-            <Text
-              style={[
-                styles.filterChipText,
-                { color: filterResources ? theme.colors.infoText : theme.colors.textSecondary },
-              ]}
-            >
-              RESOURCES ({resources.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.filterChip,
-              filterHazards
-                ? { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder }
-                : { backgroundColor: theme.colors.background, borderColor: theme.colors.surfaceBorder },
-            ]}
-            onPress={() => setFilterHazards(!filterHazards)}
-            activeOpacity={0.7}
-          >
-            <NavIcon
-              name="WARNING"
-              color={filterHazards ? theme.colors.warningText : theme.colors.textSecondary}
-              size={14}
-            />
-            <Text
-              style={[
-                styles.filterChipText,
-                { color: filterHazards ? theme.colors.warningText : theme.colors.textSecondary },
-              ]}
-            >
-              HAZARDS ({hazards.length})
-            </Text>
-          </TouchableOpacity>
-        </View>
-
+      
         {/* Location Error / Status Banner if unavailable */}
         {locationState === 'UNAVAILABLE' || locationError ? (
           <View
             style={[
               styles.locationBanner,
-              { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder },
+              { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warningBorder, position: 'absolute', top: 12, left: 12, right: 12, zIndex: 30 },
             ]}
           >
             <NavIcon name="LOCATION" color={theme.colors.warningText} size={14} />
@@ -342,7 +251,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             </Text>
           </View>
         ) : null}
-      </View>
 
       {/* 2. Real MapLibre Surface */}
       <View style={styles.mapContainer}>
@@ -384,7 +292,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                       isSelected && [styles.selectedMarkerHalo, { borderColor: sevColor }],
                     ]}
                   >
-                    <NavIcon name="Alerts" color="#FFFFFF" size={14} />
+                    <NavIcon name={getCategoryIcon(inc.category) as any} color="#FFFFFF" size={14} />
                   </View>
                 </View>
               </Marker>
@@ -532,8 +440,46 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         </View>
       ) : null}
 
-      {/* 4. Floating Map Control Buttons */}
+      {/* 4. Floating Map Control Buttons (Bottom Left) */}
       <View style={[styles.controlsContainer, selectedMarker ? { bottom: 270 } : { bottom: 24 }]}>
+        
+        {/* Toggle Buttons */}
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            { marginBottom: 8, backgroundColor: filterIncidents ? theme.colors.dangerBg : theme.colors.surface, borderColor: filterIncidents ? theme.colors.primaryDanger : theme.colors.surfaceBorder },
+          ]}
+          onPress={() => setFilterIncidents(!filterIncidents)}
+          activeOpacity={0.7}
+        >
+          <NavIcon name="WARNING" color={filterIncidents ? theme.colors.dangerText : theme.colors.textSecondary} size={16} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            { marginBottom: 8, backgroundColor: filterResources ? theme.colors.infoBg : theme.colors.surface, borderColor: filterResources ? theme.colors.accent : theme.colors.surfaceBorder },
+          ]}
+          onPress={() => setFilterResources(!filterResources)}
+          activeOpacity={0.7}
+        >
+          <NavIcon name="PLUS" color={filterResources ? theme.colors.infoText : theme.colors.textSecondary} size={16} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            { marginBottom: 16, backgroundColor: filterHazards ? theme.colors.warningBg : theme.colors.surface, borderColor: filterHazards ? theme.colors.warningBorder : theme.colors.surfaceBorder },
+          ]}
+          onPress={() => setFilterHazards(!filterHazards)}
+          activeOpacity={0.7}
+        >
+          <NavIcon name="BLOCKED_ROAD" color={filterHazards ? theme.colors.warningText : theme.colors.textSecondary} size={16} />
+        </TouchableOpacity>
+
+        <View style={{width: 30, height: 1, backgroundColor: theme.colors.surfaceBorder, marginBottom: 16}} />
+
+        {/* Existing Map Controls */}
         <TouchableOpacity
           style={[
             styles.controlButton,
@@ -541,7 +487,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           ]}
           onPress={handleZoomIn}
           activeOpacity={0.7}
-          accessibilityLabel="Zoom In"
         >
           <NavIcon name="PLUS" color={theme.colors.textPrimary} size={16} />
         </TouchableOpacity>
@@ -552,14 +497,20 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             {
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.surfaceBorder,
-              marginTop: 8,
+              borderTopWidth: 0,
+              borderTopLeftRadius: 0,
+              borderTopRightRadius: 0,
+              borderBottomLeftRadius: 22,
+              borderBottomRightRadius: 22,
+              marginTop: -22,
+              paddingTop: 22,
+              marginBottom: 8
             },
           ]}
           onPress={handleZoomOut}
           activeOpacity={0.7}
-          accessibilityLabel="Zoom Out"
         >
-          <View style={{ width: 12, height: 2, backgroundColor: theme.colors.textPrimary }} />
+          <View style={{ width: 12, height: 2, backgroundColor: theme.colors.textPrimary, marginTop: 10 }} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -568,12 +519,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             {
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.surfaceBorder,
-              marginTop: 8,
+              marginBottom: 8
             },
           ]}
           onPress={handleRecenter}
           activeOpacity={0.7}
-          accessibilityLabel="My Location"
         >
           <NavIcon name="LOCATION" color={theme.colors.primary} size={18} />
         </TouchableOpacity>
@@ -584,12 +534,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             {
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.surfaceBorder,
-              marginTop: 8,
             },
           ]}
           onPress={() => setShowLegend(!showLegend)}
           activeOpacity={0.7}
-          accessibilityLabel="Toggle Legend"
         >
           <NavIcon name="INFO" color={showLegend ? theme.colors.primary : theme.colors.textSecondary} size={16} />
         </TouchableOpacity>
@@ -1013,7 +961,7 @@ const styles = StyleSheet.create({
   },
   controlsContainer: {
     position: 'absolute',
-    right: 12,
+    left: 12,
     zIndex: 20,
     alignItems: 'center',
   },

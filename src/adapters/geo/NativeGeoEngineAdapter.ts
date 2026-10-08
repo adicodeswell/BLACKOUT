@@ -87,23 +87,36 @@ export class NativeGeoEngineAdapter implements GeoEngine {
 
   
   async loadOfflineMap(region: any): Promise<Result<any>> {
-    // Phase 2: Offline Map loading logic via MapLibre
-    // For now, return success to let the map render the grid
-    return { ok: true, data: { status: 'LOADED', regionId: region.id, offlineReady: true } };
+    try {
+      const jsonStr = await BlackoutGeoModule.loadOfflineMap(JSON.stringify(region));
+      const parsed = JSON.parse(jsonStr);
+      // The Java bridge now returns 'path' for the MBTiles file
+      return { ok: true, data: parsed };
+    } catch (e: any) {
+      return { ok: false, error: { code: 'UNAVAILABLE', message: e.message, retryable: false, module: 'GEO' } };
+    }
   }
 
-  
   async addHazard(hazard: any): Promise<Result<any>> {
     return { ok: true, data: {} as any };
   }
 
   async findNearby(type: any, location: any, radiusM: number): Promise<Result<any>> {
-    return { ok: true, data: [] };
+    try {
+      const jsonStr = await BlackoutGeoModule.findNearby(type, JSON.stringify(location), radiusM);
+      return { ok: true, data: JSON.parse(jsonStr) };
+    } catch (e: any) {
+      return { ok: false, error: { code: 'UNAVAILABLE', message: e.message, retryable: false, module: 'GEO' } };
+    }
   }
+
   async getHazards(region: any): Promise<Result<HazardDto[]>> {
-    // In production, hazards are fetched from DataEngine. 
-    // The GeoEngine only uses them for routing calculation.
-    return { ok: true, data: [] };
+    try {
+      const jsonStr = await BlackoutGeoModule.getHazards(JSON.stringify(region));
+      return { ok: true, data: JSON.parse(jsonStr) };
+    } catch (e: any) {
+      return { ok: false, error: { code: 'UNAVAILABLE', message: e.message, retryable: false, module: 'GEO' } };
+    }
   }
 
   observeLocation(listener: (event: any) => void): () => void {

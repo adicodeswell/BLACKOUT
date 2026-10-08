@@ -31,6 +31,7 @@ export interface MapLoadResult {
   region: MapRegion;
   available: boolean;
   source: "BUNDLED" | "LOCAL_CACHE";
+  path?: string;
 }
 
 export interface NearbyItemDto {

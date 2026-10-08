@@ -108,6 +108,10 @@ public class WifiDirectManager {
         }
     }
 
+    public List<WifiP2pDevice> getDiscoveredPeers() {
+        return new ArrayList<>(peers);
+    }
+
     public void setGroupFormed(boolean formed) {
         this.isGroupFormed = formed;
     }
