@@ -19,7 +19,7 @@ import { NavIcon } from '../components/NavIcon';
 
 
 // MapLibre React Native
-import { Map as MapView, Camera, Marker } from '@maplibre/maplibre-react-native';
+import { Map as MapView, Camera, Marker, GeoJSONSource, Layer } from '@maplibre/maplibre-react-native';
 
 interface MapScreenProps {
   mapService?: MapService;
@@ -36,7 +36,8 @@ const DARK_MAP_STYLE: any = {
       type: 'raster',
       tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
       tileSize: 256,
-      attribution: '© MapLibre © OpenStreetMap contributors',
+      maxzoom: 16,
+      attribution: '© Esri',
     },
   },
   layers: [
@@ -52,7 +53,7 @@ const DARK_MAP_STYLE: any = {
       type: 'raster',
       source: 'demotiles',
       minzoom: 0,
-      maxzoom: 19,
+      maxzoom: 22,
       paint: {
         'raster-opacity': 0.75,
         'raster-brightness-max': 0.55,
@@ -71,7 +72,8 @@ const LIGHT_MAP_STYLE: any = {
       type: 'raster',
       tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
       tileSize: 256,
-      attribution: '© MapLibre © OpenStreetMap contributors',
+      maxzoom: 16,
+      attribution: '© Esri',
     },
   },
   layers: [
@@ -87,7 +89,7 @@ const LIGHT_MAP_STYLE: any = {
       type: 'raster',
       source: 'demotiles',
       minzoom: 0,
-      maxzoom: 19,
+      maxzoom: 22,
       paint: {
         'raster-opacity': 0.9,
         'raster-contrast': 0.1,
@@ -97,16 +99,16 @@ const LIGHT_MAP_STYLE: any = {
   ],
 };
 
-const getCategoryIcon = (category: string) => {
+const getCategoryEmoji = (category: string) => {
   switch (category) {
-    case 'FIRE': return 'FIRE';
-    case 'MEDICAL': return 'MEDICAL';
-    case 'FOOD': return 'FOOD';
-    case 'WATER': return 'WATER';
-    case 'SHELTER': return 'SHELTER';
-    case 'INFRASTRUCTURE_COLLAPSE': return 'BLOCKED_ROAD';
-    case 'ROAD_BLOCKED': return 'BLOCKED_ROAD';
-    default: return 'WARNING';
+    case 'FIRE': return '🔥';
+    case 'MEDICAL': return '🚑';
+    case 'FOOD': return '🍔';
+    case 'WATER': return '💧';
+    case 'SHELTER': return '⛺';
+    case 'INFRASTRUCTURE_COLLAPSE': return '🚧';
+    case 'ROAD_BLOCKED': return '🛑';
+    default: return '⚠️';
   }
 };
 
@@ -145,6 +147,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setFilterIncidents,
     setFilterResources,
     setFilterHazards,
+    activeRoute,
+    calculateRouteTo,
+    clearRoute,
   } = useMap(mapService);
 
   // Camera state for MapLibre
@@ -261,7 +266,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           logo={false}
           compass={false}
           scaleBar={false}
-          onPress={() => selectMarker(null)}
+          onPress={() => { selectMarker(null); clearRoute(); }}
+          onLongPress={(e: any) => {
+            const coord = e.lngLat || (e.nativeEvent && e.nativeEvent.lngLat) || (e.geometry && e.geometry.coordinates) || [];
+            if (coord && coord.length >= 2) {
+                calculateRouteTo({ latitude: coord[1], longitude: coord[0], accuracy_m: 0, captured_at: Date.now() });
+            }
+          }}
         >
           <Camera
             ref={cameraRef}
@@ -281,7 +292,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               <Marker
                 key={`inc-${inc.incident_id}`}
                 id={`inc-${inc.incident_id}`}
-                lngLat={[inc.location.longitude, inc.location.latitude]}
+                anchor={{x: 0.5, y: 0.5} as any} lngLat={[inc.location.longitude, inc.location.latitude]}
                 onPress={() => selectMarker({ type: 'INCIDENT', data: inc })}
               >
                 <View style={styles.markerAnchor}>
@@ -292,7 +303,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                       isSelected && [styles.selectedMarkerHalo, { borderColor: sevColor }],
                     ]}
                   >
-                    <NavIcon name={getCategoryIcon(inc.category) as any} color="#FFFFFF" size={14} />
+                    <Text style={{ fontSize: 16 }}>{getCategoryEmoji(inc.category)}</Text>
                   </View>
                 </View>
               </Marker>
@@ -309,7 +320,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               <Marker
                 key={`res-${res.resource_id}`}
                 id={`res-${res.resource_id}`}
-                lngLat={[res.location.longitude, res.location.latitude]}
+                anchor={{x: 0.5, y: 0.5} as any} lngLat={[res.location.longitude, res.location.latitude]}
                 onPress={() => selectMarker({ type: 'RESOURCE', data: res })}
               >
                 <View style={styles.markerAnchor}>
@@ -338,7 +349,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               <Marker
                 key={`haz-${haz.hazard_id}`}
                 id={`haz-${haz.hazard_id}`}
-                lngLat={[geom.longitude, geom.latitude]}
+                anchor={{x: 0.5, y: 0.5} as any} lngLat={[geom.longitude, geom.latitude]}
                 onPress={() => selectMarker({ type: 'HAZARD', data: haz })}
               >
                 <View style={styles.markerAnchor}>
@@ -356,12 +367,61 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             );
           })}
 
+          {/* Route Rendering */}
+          {activeRoute && activeRoute.geometry && activeRoute.geometry.length > 0 && (
+            <GeoJSONSource
+              id="active-route"
+              data={{
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'LineString',
+                  coordinates: activeRoute.geometry.map((p: any) => [p.longitude, p.latitude])
+                }
+              }}
+            >
+              <Layer type="line"
+                id="route-line-halo"
+                style={{
+                  lineColor: theme.colors.surface,
+                  lineWidth: 6,
+                  lineCap: 'round',
+                  lineJoin: 'round',
+                }}
+              />
+              <Layer type="line"
+                id="route-line"
+                style={{
+                  lineColor: theme.colors.primary,
+                  lineWidth: 4,
+                  lineCap: 'round',
+                  lineJoin: 'round',
+                  lineDasharray: [2, 2],
+                }}
+              />
+            </GeoJSONSource>
+          )}
+          
+          {/* Active Route Destination Marker */}
+          {activeRoute && activeRoute.destination && (
+            <Marker
+              key="route-dest"
+              id="route-dest"
+              anchor={{x: 0.5, y: 0.5} as any}
+              lngLat={[activeRoute.destination.longitude, activeRoute.destination.latitude]}
+            >
+              <View style={[styles.markerAnchor, { zIndex: 100 }]}>
+                 <Text style={{ fontSize: 20 }}>🏁</Text>
+              </View>
+            </Marker>
+          )}
+
           {/* Current Location Marker */}
           {currentLocation?.latitude && currentLocation?.longitude ? (
             <Marker
               key="current-location"
               id="current-location"
-              lngLat={[currentLocation.longitude, currentLocation.latitude]}
+              anchor={{x: 0.5, y: 0.5} as any} lngLat={[currentLocation.longitude, currentLocation.latitude]}
               onPress={() => selectMarker({ type: 'LOCATION', data: currentLocation })}
             >
               <View style={styles.markerAnchor}>

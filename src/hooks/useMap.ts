@@ -4,7 +4,7 @@ import type { LocationDto } from '../contracts/geo/LocationDto';
 import type { HazardDto } from '../contracts/geo/HazardDto';
 import type { IncidentDto } from '../contracts/data/IncidentDto';
 import type { ResourceDto } from '../contracts/data/ResourceDto';
-import type { MapLoadResult } from '../contracts/geo/RouteDto';
+import type { MapLoadResult, RouteDto } from '../contracts/geo/RouteDto';
 
 export type LocationState = 'IDLE' | 'LOADING' | 'SUCCESS' | 'ERROR' | 'UNAVAILABLE';
 export type MapLoadingState = 'IDLE' | 'LOADING' | 'SUCCESS' | 'ERROR';
@@ -35,6 +35,9 @@ export interface UseMapResult {
   setFilterIncidents: (active: boolean) => void;
   setFilterResources: (active: boolean) => void;
   setFilterHazards: (active: boolean) => void;
+  activeRoute: RouteDto | null;
+  calculateRouteTo: (dest: LocationDto) => Promise<void>;
+  clearRoute: () => void;
 }
 
 export const useMap = (mapService: MapService): UseMapResult => {
@@ -48,6 +51,7 @@ export const useMap = (mapService: MapService): UseMapResult => {
   const [hazards, setHazards] = useState<HazardDto[]>([]);
   const [selectedMarker, setSelectedMarker] = useState<SelectedMarker | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [activeRoute, setActiveRoute] = useState<RouteDto | null>(null);
 
   const [filterIncidents, setFilterIncidents] = useState<boolean>(true);
   const [filterResources, setFilterResources] = useState<boolean>(true);
@@ -148,6 +152,16 @@ export const useMap = (mapService: MapService): UseMapResult => {
     return finalLoc || null;
   }, [acquireLocation, currentLocation]);
 
+  const calculateRouteTo = useCallback(async (dest: LocationDto) => {
+    if (!currentLocation) return;
+    const res = await mapService.calculateRoute(currentLocation, dest);
+    if (res.ok) {
+      setActiveRoute(res.data);
+    }
+  }, [currentLocation, mapService]);
+
+  const clearRoute = useCallback(() => setActiveRoute(null), []);
+
   const selectMarker = useCallback((marker: SelectedMarker | null) => {
     setSelectedMarker(marker);
   }, []);
@@ -172,5 +186,8 @@ export const useMap = (mapService: MapService): UseMapResult => {
     setFilterIncidents,
     setFilterResources,
     setFilterHazards,
+    activeRoute,
+    calculateRouteTo,
+    clearRoute,
   };
 };

@@ -65,6 +65,12 @@ export class NativeGeoEngineAdapter implements GeoEngine {
   async calculateRoute(start: LocationDto, destination: LocationDto, options: RouteOptions): Promise<Result<RouteDto>> {
     try {
       const route = await BlackoutGeoModule.calculateRoute(start, destination, options);
+      
+      // Map Java's 'path' array to TS 'geometry' array
+      if (route && (route as any).path && !route.geometry) {
+        route.geometry = (route as any).path;
+      }
+      
       return { ok: true, data: route as RouteDto };
     } catch (error: any) {
       return { ok: false, error: { code: 'UNAVAILABLE', message: error.message, retryable: false, module: 'GEO' } };
