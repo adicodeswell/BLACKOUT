@@ -1,3 +1,5 @@
+import { PermissionsAndroid, Platform } from 'react-native';
+
 import type { NetworkEngine } from "../../contracts/network/NetworkEngine";
 import type { Result } from "../../contracts/common/Result";
 import type { MessageDto, DeliveryHandle, DeliveryStatus } from "../../contracts/network/MessageDto";
@@ -16,7 +18,35 @@ export class NativeNetworkEngineAdapter implements NetworkEngine {
     this.bridge = bridgeAdapter || new NativeBridgeAdapter();
   }
 
+  private async requestPermissions(): Promise<boolean> {
+    if (Platform.OS !== 'android') return true;
+    try {
+      const permissions = [
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      ];
+      if (Platform.Version >= 31) {
+        permissions.push(
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE
+        );
+      }
+      if (Platform.Version >= 33) {
+        // Use string directly if NEARBY_WIFI_DEVICES isn't in older RN types
+        permissions.push('android.permission.NEARBY_WIFI_DEVICES' as any);
+        permissions.push('android.permission.POST_NOTIFICATIONS' as any);
+      }
+      const granted = await PermissionsAndroid.requestMultiple(permissions);
+      return Object.values(granted).every(status => status === PermissionsAndroid.RESULTS.GRANTED);
+    } catch (err) {
+      console.warn('Failed to request permissions', err);
+      return false;
+    }
+  }
+
   async start(): Promise<Result<void>> {
+    await this.requestPermissions();
     const initRes = await this.bridge.initialize();
     if (!initRes.ok) {
       return initRes;

@@ -17,7 +17,33 @@ import java.util.List;
  * Handles high-bandwidth connection negotiation via Wi-Fi Direct.
  * Discovers peers and registers broadcast receivers for P2P events.
  */
+import android.net.wifi.p2p.WifiP2pConfig;
+import android.net.wifi.p2p.WifiP2pInfo;
+import java.net.Socket;
+import java.net.InetSocketAddress;
+
 public class WifiDirectManager {
+    public interface ConnectionCallback {
+        void onClientConnectedToGroupOwner(Socket socket);
+    }
+    
+    private ConnectionCallback connectionCallback;
+    
+    public void setConnectionCallback(ConnectionCallback callback) {
+        this.connectionCallback = callback;
+    }
+    
+    private void connectToPeer(WifiP2pDevice device) {
+        if (p2pManager == null || channel == null) return;
+        WifiP2pConfig config = new WifiP2pConfig();
+        config.deviceAddress = device.deviceAddress;
+        p2pManager.connect(channel, config, new WifiP2pManager.ActionListener() {
+            @Override
+            public void onSuccess() { Log.i(TAG, "Successfully initiated connect to " + device.deviceName); }
+            @Override
+            public void onFailure(int reason) { Log.e(TAG, "Connect failed. Reason: " + reason); }
+        });
+    }
     private static final String TAG = "WifiDirectManager";
     
     private final WifiP2pManager p2pManager;
@@ -50,9 +76,9 @@ public class WifiDirectManager {
                 Log.i(TAG, "Wi-Fi Direct Peers found: " + peers.size());
                 
                 // Trigger connection logic to first peer in production implementation
-                // if (!peers.isEmpty() && !isGroupFormed) {
-                //     connectToPeer(peers.get(0));
-                // }
+                if (!peers.isEmpty() && !isGroupFormed) {
+                    connectToPeer(peers.get(0));
+                }
             }
         }
     };
@@ -74,7 +100,31 @@ public class WifiDirectManager {
                             p2pManager.requestPeers(channel, peerListListener);
                         }
                     } else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION.equals(action)) {
-                        // Handle network connection changes
+                        android.net.NetworkInfo networkInfo = intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO);
+                        if (networkInfo != null && networkInfo.isConnected()) {
+                            p2pManager.requestConnectionInfo(channel, new WifiP2pManager.ConnectionInfoListener() {
+                                @Override
+                                public void onConnectionInfoAvailable(WifiP2pInfo info) {
+                                    isGroupFormed = info.groupFormed;
+                                    if (info.groupFormed && !info.isGroupOwner) {
+                                        // We are client, connect to GO
+                                        new Thread(() -> {
+                                            try {
+                                                Socket socket = new Socket();
+                                                socket.connect(new InetSocketAddress(info.groupOwnerAddress, 18888), 10000);
+                                                if (connectionCallback != null) {
+                                                    connectionCallback.onClientConnectedToGroupOwner(socket);
+                                                }
+                                            } catch (Exception e) {
+                                                Log.e(TAG, "Failed to connect to Group Owner", e);
+                                            }
+                                        }).start();
+                                    }
+                                }
+                            });
+                        } else {
+                            isGroupFormed = false;
+                        }
                     }
                 }
             };

@@ -101,6 +101,14 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void startNetworking(Promise promise) {
         try {
+            // Start the Foreground Service to keep sockets alive in the background/screen-off
+            android.content.Intent serviceIntent = new android.content.Intent(getReactApplicationContext(), com.blackout.network.service.MeshForegroundService.class);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                getReactApplicationContext().startForegroundService(serviceIntent);
+            } else {
+                getReactApplicationContext().startService(serviceIntent);
+            }
+
             if (networkEngine != null) {
                 networkEngine.start();
             }
