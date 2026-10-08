@@ -40,6 +40,18 @@ public class BlackoutGeoModule extends ReactContextBaseJavaModule {
     public BlackoutGeoModule(ReactApplicationContext reactContext) {
         super(reactContext);
         locationManager = (LocationManager) reactContext.getSystemService(Context.LOCATION_SERVICE);
+        try {
+            com.blackout.geolocation.OfflineGeoEngine.LocationProvider provider = new com.blackout.geolocation.OfflineGeoEngine.LocationProvider() {
+                @Override
+                public com.blackout.geolocation.OfflineGeoEngine.LocationSample getCurrentLocation() {
+                    if (lastKnownLocation == null) return null;
+                    return new com.blackout.geolocation.OfflineGeoEngine.LocationSample(lastKnownLocation.getLatitude(), lastKnownLocation.getLongitude(), lastKnownLocation.getAccuracy(), lastKnownLocation.getTime());
+                }
+                @Override
+                public Runnable observe(com.blackout.geolocation.OfflineGeoEngine.LocationListener listener) { return () -> {}; }
+            };
+            geoEngine = new com.blackout.geolocation.OfflineGeoEngine(provider, new com.blackout.geolocation.LocationValidator(), new com.blackout.geolocation.OfflineMapManager(java.util.Collections.emptyList()));
+        } catch(Exception e) {}
     }
 
     @NonNull
@@ -266,7 +278,7 @@ promise.reject("UNAVAILABLE", "Location not yet acquired (waiting for sensor loc
             RouteComputation result = geoEngine.calculateRoute(
                     pStart,
                     pDest,
-                    new AStarRouter.Options(true, true, 5, 200)
+                    new AStarRouter.Options(true, true, 4, 200)
             );
 
             if (result != null) {

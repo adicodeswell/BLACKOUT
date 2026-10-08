@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Alert } from 'react-native';
 import type { MapService } from '../services/MapService';
 import type { LocationDto } from '../contracts/geo/LocationDto';
 import type { HazardDto } from '../contracts/geo/HazardDto';
@@ -153,12 +154,41 @@ export const useMap = (mapService: MapService): UseMapResult => {
   }, [acquireLocation, currentLocation]);
 
   const calculateRouteTo = useCallback(async (dest: LocationDto) => {
-    if (!currentLocation) return;
-    const res = await mapService.calculateRoute(currentLocation, dest);
-    if (res.ok) {
-      setActiveRoute(res.data);
+    if (!currentLocation) {
+        Alert.alert("Error", "Current Location is missing. Cannot route.");
+        return;
     }
-  }, [currentLocation, mapService]);
+    
+    // Using OSRM Public API to trace real streets since offline graph data isn't bundled yet
+    try {
+      const url = `https://router.project-osrm.org/route/v1/walking/${currentLocation.longitude},${currentLocation.latitude};${dest.longitude},${dest.latitude}?overview=full&geometries=geojson`;
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.code === 'Ok' && data.routes.length > 0) {
+        const route = data.routes[0];
+        const coordinates = route.geometry.coordinates.map((c: any) => ({
+          longitude: c[0],
+          latitude: c[1]
+        }));
+        
+        setActiveRoute({
+          route_id: 'osrm-route',
+          origin: currentLocation,
+          destination: dest,
+          distance_m: route.distance,
+          duration_s: route.duration,
+          geometry: coordinates,
+          avoided_hazard_ids: [],
+          calculated_at: Date.now()
+        });
+      } else {
+        Alert.alert("Route Error", "Could not find a path along real roads.");
+      }
+    } catch(e: any) {
+      Alert.alert("Route Error", "Failed to reach OSRM routing server.");
+    }
+  }, [currentLocation]);
 
   const clearRoute = useCallback(() => setActiveRoute(null), []);
 

@@ -268,9 +268,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           scaleBar={false}
           onPress={() => { selectMarker(null); clearRoute(); }}
           onLongPress={(e: any) => {
-            const coord = e.lngLat || (e.nativeEvent && e.nativeEvent.lngLat) || (e.geometry && e.geometry.coordinates) || [];
+            const coord = e.lngLat || (e.nativeEvent && e.nativeEvent.lngLat) || (e.geometry && e.geometry.coordinates) || (e.coordinates) || [];
             if (coord && coord.length >= 2) {
-                calculateRouteTo({ latitude: coord[1], longitude: coord[0], accuracy_m: 0, captured_at: Date.now() });
+                // Alert.alert("Tapped!", JSON.stringify(coord));
+                calculateRouteTo({ latitude: coord[1], longitude: coord[0], accuracy_m: 0, captured_at: Date.now() }).catch(err => Alert.alert("Error", String(err)));
+            } else {
+                Alert.alert("Coord Missing", JSON.stringify(e));
             }
           }}
         >
