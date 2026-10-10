@@ -198,12 +198,7 @@ export class PeopleService {
       priority: "NORMAL",
       payload_hash: simpleHash(messageText),
       payload: { text: messageText },
-      encryption: {
-        algorithm: "AES_GCM",
-        key_id: "default-mesh-key",
-        nonce: "1234567890abcdef"
-      },
-      signature: "sig_local_dev",
+      signature: "sig_local_dev", // TODO: Implement actual signing
     };
 
     // Store locally in conversation immediately

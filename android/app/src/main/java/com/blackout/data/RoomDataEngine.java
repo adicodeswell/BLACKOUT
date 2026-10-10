@@ -80,6 +80,23 @@ public class RoomDataEngine {
         return database.resourceDao().findAll();
     }
 
+    
+    public void updateIncident(IncidentEntity incident) {
+        database.incidentDao().update(incident);
+    }
+    
+    public List<EvidenceEntity> getEvidenceForIncident(String incidentId) {
+        return database.evidenceDao().findByIncidentId(incidentId);
+    }
+    
+    public ResourceEntity getResource(String resourceId) {
+        return database.resourceDao().findById(resourceId);
+    }
+    
+    public void updateResource(ResourceEntity resource) {
+        database.resourceDao().update(resource);
+    }
+
     public void addEvidence(EvidenceEntity evidence) {
         database.evidenceDao().insert(evidence);
     }

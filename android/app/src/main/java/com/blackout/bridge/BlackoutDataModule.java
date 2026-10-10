@@ -138,12 +138,8 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
             if (existing != null) {
                 if (obj.has("status")) existing.status = obj.getString("status");
                 if (obj.has("severity")) existing.severity = obj.getString("severity");
-                // Skipping full Room DB update logic for brevity, just return success
-                JSONObject result = new JSONObject();
-                result.put("incident_id", existing.incidentId);
-                result.put("status", existing.status);
-                result.put("severity", existing.severity);
-                promise.resolve(result.toString());
+                dataEngine.updateIncident(existing);
+                promise.resolve(serializeIncident(existing).toString());
             } else {
                 promise.reject("NOT_FOUND", "Incident not found");
             }
@@ -181,8 +177,16 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void getEvidenceForIncident(String incidentId, Promise promise) {
         try {
+            List<EvidenceEntity> evidence = dataEngine.getEvidenceForIncident(incidentId);
             JSONArray arr = new JSONArray();
-            // Fetch from Room in production, returning empty for prototype
+            for (EvidenceEntity ev : evidence) {
+                JSONObject o = new JSONObject();
+                o.put("evidence_id", ev.evidenceId);
+                o.put("incident_id", ev.incidentId);
+                o.put("type", ev.type);
+                o.put("local_uri", ev.localUri);
+                arr.put(o);
+            }
             promise.resolve(arr.toString());
         } catch (Exception e) {
             promise.reject("GET_EVIDENCE_ERROR", e);
@@ -193,8 +197,17 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
     public void updateResource(String resourceJson, Promise promise) {
         try {
             JSONObject obj = new JSONObject(resourceJson);
-            JSONObject result = new JSONObject(resourceJson);
-            promise.resolve(result.toString());
+            String resourceId = obj.getString("resource_id");
+            ResourceEntity existing = dataEngine.getResource(resourceId);
+            if (existing != null) {
+                if (obj.has("availability")) existing.availability = obj.getString("availability");
+                if (obj.has("remaining_capacity")) existing.remainingCapacity = obj.getInt("remaining_capacity");
+                existing.updatedAt = System.currentTimeMillis();
+                dataEngine.updateResource(existing);
+                promise.resolve(serializeResource(existing).toString());
+            } else {
+                promise.reject("NOT_FOUND", "Resource not found");
+            }
         } catch (Exception e) {
             promise.reject("UPDATE_RESOURCE_ERROR", e);
         }
@@ -203,15 +216,30 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void calculateConfidence(String incidentId, Promise promise) {
         try {
+            IncidentEntity inc = dataEngine.getIncident(incidentId);
+            if (inc == null) {
+                promise.reject("NOT_FOUND", "Incident not found");
+                return;
+            }
             JSONObject state = new JSONObject();
             state.put("incident_id", incidentId);
-            state.put("level", "HIGH_CONFIDENCE");
-            state.put("independent_sources", 2);
-            state.put("supporting_evidence", 1);
-            state.put("contradictions", 0);
-            state.put("freshness_factor", 0.98);
-            state.put("rationale", "Processed via native Room DB ConfidenceCalculator engine.");
+            
+            String level = "UNVERIFIED";
+            if (inc.independentSourceCount >= 3) level = "HIGH_CONFIDENCE";
+            else if (inc.independentSourceCount >= 2) level = "CONFIRMED";
+            else if (inc.evidenceCount > 0) level = "LIKELY";
+
+            state.put("level", level);
+            state.put("independent_sources", inc.independentSourceCount);
+            state.put("supporting_evidence", inc.evidenceCount);
+            state.put("contradictions", inc.contradictionCount);
+            state.put("freshness_factor", 1.0);
+            state.put("rationale", "Calculated based on evidence and sources.");
             state.put("calculated_at", System.currentTimeMillis());
+            
+            inc.confidenceLevel = level;
+            dataEngine.updateIncident(inc);
+
             promise.resolve(state.toString());
         } catch (Exception e) {
             promise.reject("CALC_CONFIDENCE_ERROR", e);
