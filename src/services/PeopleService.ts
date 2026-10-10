@@ -187,7 +187,7 @@ export class PeopleService {
     if (targetPeerId.includes(":") || targetPeerId.startsWith("TEMP-")) {
       return {
         ok: false,
-        error: { code: "UNRESOLVED_IDENTITY", message: "Cannot send to an unresolved or temporary peer identity. Please wait for the connection to fully establish.", retryable: false, module: "NETWORK" },
+        error: { code: "VALIDATION", message: "Cannot send to an unresolved or temporary peer identity. Please wait for the connection to fully establish.", retryable: false, module: "NETWORK" },
       };
     }
 
@@ -250,7 +250,7 @@ export class PeopleService {
     };
   }
 
-  subscribeMessages(peerId: string, listener: MessageListener): () => void {
+  subscribeMessages(peerId: string | undefined, listener: MessageListener): () => void {
     const entry = { peerId, listener };
     this.messageListeners.add(entry);
     return () => {

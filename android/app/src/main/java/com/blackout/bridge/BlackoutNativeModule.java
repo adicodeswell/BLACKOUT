@@ -28,6 +28,7 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableArray;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import android.net.wifi.p2p.WifiP2pDevice;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
@@ -224,16 +225,14 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void sendMessage(ReadableMap messageMap, Promise promise) {
+    public void sendMessage(String messageJson, Promise promise) {
         try {
             if (outgoingSendManager == null) {
                 promise.reject("ENGINE_NOT_READY", "Initialize the engine first");
                 return;
             }
             
-            Map<String, Object> map = messageMap.toHashMap();
-            JSONObject json = new JSONObject(map);
-            NetworkMessage msg = MessageSerializer.deserialize(json.toString().getBytes());
+            NetworkMessage msg = MessageSerializer.deserialize(messageJson.getBytes(StandardCharsets.UTF_8));
             
             // Wait, MessageSerializer expects snake_case for field names. 
             // In a real production app, we'd ensure React Native sends the snake_case keys correctly.

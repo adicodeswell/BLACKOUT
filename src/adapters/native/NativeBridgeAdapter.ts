@@ -72,8 +72,8 @@ export class NativeBridgeAdapter {
 
   async sendMessage(message: MessageDto): Promise<Result<DeliveryHandle>> {
     try {
-      // Pass the raw JS object over the bridge to be parsed into a WritableMap
-      const data = await BlackoutNativeModule.sendMessage(message);
+      // Pass the serialized JSON string over the bridge
+      const data = await BlackoutNativeModule.sendMessage(JSON.stringify(message));
       return { ok: true, data: data as DeliveryHandle };
     } catch (error) {
       return { ok: false, error: mapError(error) };

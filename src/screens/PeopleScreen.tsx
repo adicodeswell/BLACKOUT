@@ -81,10 +81,16 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
 
   useEffect(() => {
     loadData();
-    const unsub = peopleService.subscribePeers((peers) => {
+    const unsubPeers = peopleService.subscribePeers((peers) => {
       setNearbyPeers(peers);
     });
-    return () => unsub();
+    const unsubMessages = peopleService.subscribeMessages(undefined, () => {
+      setConversations(peopleService.getConversationsList());
+    });
+    return () => {
+      unsubPeers();
+      unsubMessages();
+    };
   }, [loadData, peopleService]);
 
   const handleRefresh = async () => {
@@ -140,7 +146,7 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
           if (item.connection_state === 'DISCOVERED') {
             Alert.alert("Connecting", "Connecting to peer. Please wait...");
             peopleService.connectToPeer(item.peer_id);
-          } else if (item.connection_state === 'CONNECTED' || item.connection_state === 'READY') {
+          } else if (item.connection_state === 'CONNECTED') {
             onStartChat(item.peer_id);
           }
         }}
