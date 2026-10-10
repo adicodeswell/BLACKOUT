@@ -18,7 +18,7 @@ public class ConnectionManager {
     /**
      * Registers and starts a new peer connection.
      */
-        public void updateConnectionId(String oldId, String newId) {
+        public synchronized void updateConnectionId(String oldId, String newId) {
         PeerConnection conn = connections.remove(oldId);
         if (conn != null) {
             if (connections.containsKey(newId)) {
@@ -34,7 +34,7 @@ public class ConnectionManager {
         }
     }
 
-    public void addConnection(PeerConnection connection) {
+    public synchronized void addConnection(PeerConnection connection) {
         String peerId = connection.getPeerId();
         
         // If we already have a connection to this peer, disconnect the old one
@@ -54,7 +54,7 @@ public class ConnectionManager {
     /**
      * Removes and disconnects a peer.
      */
-    public void removeConnection(String peerId) {
+    public synchronized void removeConnection(String peerId) {
         PeerConnection connection = connections.remove(peerId);
         if (connection != null) {
             connection.disconnect();
@@ -65,7 +65,14 @@ public class ConnectionManager {
     /**
      * Gets a specific active connection.
      */
-    public PeerConnection getConnection(String peerId) {
+    public synchronized PeerConnection getReadyConnection(String peerId) {
+        if (peerId == null || peerId.startsWith("TEMP-")) {
+            return null;
+        }
+        return connections.get(peerId);
+    }
+
+    public synchronized PeerConnection getConnection(String peerId) {
         return connections.get(peerId);
     }
 
@@ -73,7 +80,7 @@ public class ConnectionManager {
      * Broadcasts a framed byte payload to ALL currently connected peers.
      * Useful for mesh store-and-forward.
      */
-    public void broadcast(byte[] payload) {
+    public synchronized void broadcast(byte[] payload) {
         for (PeerConnection conn : connections.values()) {
             conn.send(payload);
         }
@@ -82,7 +89,7 @@ public class ConnectionManager {
     /**
      * Returns a snapshot list of all currently connected Peer IDs.
      */
-    public List<String> getActivePeerIds() {
+    public synchronized List<String> getActivePeerIds() {
         List<String> activeIds = new ArrayList<>();
         for (String id : connections.keySet()) {
             if (!id.startsWith("TEMP-")) {
@@ -95,7 +102,7 @@ public class ConnectionManager {
     /**
      * Disconnects all peers (e.g., when the app shuts down or network goes offline).
      */
-    public void disconnectAll() {
+    public synchronized void disconnectAll() {
         for (String peerId : connections.keySet()) {
             removeConnection(peerId);
         }

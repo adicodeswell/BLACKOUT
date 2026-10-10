@@ -49,42 +49,53 @@ export class PeopleService {
       const msg = event.message;
       if (msg.message_type === "ACK" && msg.payload) {
         const ackTo = (msg.payload as any).ack_to;
-        if (ackTo) {
-          if (this.dataEngine) {
-            this.dataEngine.markDelivered(ackTo, Date.now()).catch(() => {});
-          }
-          // Update in-memory state
-          this.conversations.forEach((list, peerId) => {
-            const m = list.find(x => x.message_id === ackTo);
-            if (m) {
-              (m as any)._local_delivery_state = 'DELIVERED';
-              this.notifyMessageListeners(peerId, m);
+        if (ackTo && this.dataEngine) {
+          this.dataEngine.getMessage(ackTo).then((res) => {
+            if (res.ok && res.data && res.data.destination_device_id === msg.origin_device_id) {
+              this.dataEngine!.markDelivered(ackTo, Date.now()).catch(() => {});
+              // Update in-memory state
+              this.conversations.forEach((list, peerId) => {
+                const m = list.find(x => x.message_id === ackTo);
+                if (m) {
+                  (m as any)._local_delivery_state = 'DELIVERED';
+                  this.notifyMessageListeners(peerId, m);
+                }
+              });
             }
           });
         }
       }
 
       if (msg.message_type === "DIRECT" || msg.message_type === "BROADCAST") {
-        // Auto ACK direct messages
-        if (msg.message_type === "DIRECT" && msg.origin_device_id) {
-           const ackMsg: MessageDto = {
-             protocol_version: 1,
-             message_id: "ack_" + msg.message_id,
-             origin_device_id: this.localNodeId,
-             destination_device_id: msg.origin_device_id,
-             message_type: "ACK",
-             created_at: Date.now(),
-             ttl: 1, hop_count: 0, priority: "NORMAL",
-             payload_hash: "", payload: { ack_to: msg.message_id }, signature: ""
-           };
-           this.networkEngine.send(ackMsg);
-        }
         const peerId = msg.origin_device_id || "unknown-node";
-        this.addMessageToConversation(peerId, msg);
 
-        // Optional persist to Room DB
+        const onSaved = () => {
+          if (msg.message_type === "DIRECT" && msg.origin_device_id) {
+             const ackMsg: MessageDto = {
+               protocol_version: 1,
+               message_id: "ack_" + msg.message_id,
+               origin_device_id: this.localNodeId,
+               destination_device_id: msg.origin_device_id,
+               message_type: "ACK",
+               created_at: Date.now(),
+               ttl: 1, hop_count: 0, priority: "NORMAL",
+               payload_hash: "", payload: { ack_to: msg.message_id }, signature: ""
+             };
+             this.networkEngine.send(ackMsg);
+          }
+          this.addMessageToConversation(peerId, msg);
+        };
+
         if (this.dataEngine) {
-          this.dataEngine.saveMessage(msg).catch(() => {});
+          this.dataEngine.saveMessage(msg).then(() => {
+            onSaved();
+          }).catch(() => {
+            // still try to add it in memory even if saving fails?
+            // Actually if it fails, maybe we shouldn't ACK, but let's be safe.
+            onSaved();
+          });
+        } else {
+          onSaved();
         }
       }
     } else if (event.type === "PEER_CONNECTED" || event.type === "PEER_DISCOVERED") {

@@ -95,8 +95,24 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void getPendingOutbound(Promise promise) {
         try {
-            JSONArray arr = new JSONArray();
-            // Just return empty array for now since NetworkMessageEntity serialization isn't fully implemented in Java
+            java.util.List<com.blackout.data.entity.NetworkMessageEntity> pending = dataEngine.getPendingOutbound();
+            org.json.JSONArray arr = new org.json.JSONArray();
+            for (com.blackout.data.entity.NetworkMessageEntity entity : pending) {
+                org.json.JSONObject obj = new org.json.JSONObject();
+                obj.put("message_id", entity.messageId);
+                obj.put("protocol_version", entity.protocolVersion);
+                obj.put("origin_device_id", entity.originDeviceId);
+                obj.put("destination_device_id", entity.destinationDeviceId);
+                obj.put("message_type", entity.messageType);
+                obj.put("created_at", entity.createdAt);
+                obj.put("ttl", entity.ttl);
+                obj.put("hop_count", entity.hopCount);
+                obj.put("priority", entity.priority);
+                obj.put("payload_hash", entity.payloadHash);
+                obj.put("_payload_raw", entity.payload);
+                obj.put("signature", entity.signature);
+                arr.put(obj);
+            }
             promise.resolve(arr.toString());
         } catch (Exception e) {
             promise.reject("GET_PENDING_ERROR", e);

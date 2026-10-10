@@ -147,6 +147,12 @@ class MockDataEngine implements Partial<DataEngine> {
     return { ok: true, data: this.savedMessages };
   }
 
+  async getMessage(messageId: string): Promise<Result<MessageDto>> {
+    const msg = this.savedMessages.find(m => m.message_id === messageId);
+    if (msg) return { ok: true, data: msg };
+    return { ok: false, error: { code: 'NOT_FOUND', message: 'Not found', retryable: false, module: 'DATA' } };
+  }
+
   async getPendingOutbound(): Promise<Result<MessageDto[]>> {
     return { ok: true, data: [] };
   }

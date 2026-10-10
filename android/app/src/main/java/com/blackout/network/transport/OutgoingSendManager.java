@@ -19,7 +19,7 @@ public class OutgoingSendManager {
     }
 
     public boolean sendDirect(NetworkMessage msg, String peerId) {
-        PeerConnection peer = connectionManager.getConnection(peerId);
+        PeerConnection peer = connectionManager.getReadyConnection(peerId);
         if (peer != null) {
             try {
                 byte[] bytes = MessageSerializer.serialize(msg);

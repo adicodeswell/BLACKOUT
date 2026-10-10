@@ -115,6 +115,32 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
 
             BleDiscoveryEngine bleEngine = new BleDiscoveryEngine(bluetoothAdapter);
             WifiDirectManager wifiManager = new WifiDirectManager(wifiP2pManager, channel, ctx);
+            wifiManager.setDiscoveryCallback(new WifiDirectManager.DiscoveryCallback() {
+                @Override
+                public void onPeersDiscovered(List<android.net.wifi.p2p.WifiP2pDevice> peers) {
+                    try {
+                        for (android.net.wifi.p2p.WifiP2pDevice device : peers) {
+                            com.facebook.react.bridge.WritableMap peerMap = com.facebook.react.bridge.Arguments.createMap();
+                            peerMap.putString("peer_id", device.deviceAddress);
+                            peerMap.putString("name", device.deviceName);
+                            peerMap.putString("connection_state", "DISCOVERED");
+                            peerMap.putInt("signal_strength", 80);
+                            peerMap.putDouble("last_seen", System.currentTimeMillis());
+                            peerMap.putString("transport_type", "WIFI_DIRECT");
+
+                            com.facebook.react.bridge.WritableMap event = com.facebook.react.bridge.Arguments.createMap();
+                            event.putString("type", "PEER_DISCOVERED");
+                            event.putMap("peer", peerMap);
+
+                            getReactApplicationContext()
+                                    .getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                                    .emit("NativeEvent", event);
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to emit PEER_DISCOVERED", e);
+                    }
+                }
+            });
             wifiManager.setConnectionCallback(new WifiDirectManager.ConnectionCallback() {
                 @Override
                 public void onClientConnectedToGroupOwner(java.net.Socket socket) {
@@ -147,8 +173,6 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             }
 
             if (networkEngine != null) {
-                WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
-                if (wdm != null) wdm.discoverPeers();
                 networkEngine.start();
             }
             promise.resolve(null);
@@ -161,8 +185,6 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     public void stopNetworking(Promise promise) {
         try {
             if (networkEngine != null) {
-                WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
-                if (wdm != null) wdm.discoverPeers();
                 networkEngine.stop();
             }
             promise.resolve(null);
@@ -225,8 +247,6 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
         try {
             WritableArray peersArray = Arguments.createArray();
             if (networkEngine != null) {
-                WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
-                if (wdm != null) wdm.discoverPeers();
                 // Get Wi-Fi Direct discovered peers
                 List<WifiP2pDevice> wifiPeers = networkEngine.getWifiPeers();
                 for (WifiP2pDevice device : wifiPeers) {

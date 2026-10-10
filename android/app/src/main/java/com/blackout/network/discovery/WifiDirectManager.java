@@ -21,6 +21,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class WifiDirectManager {
+    public interface DiscoveryCallback {
+        void onPeersDiscovered(List<WifiP2pDevice> peers);
+    }
+
     public interface ConnectionCallback {
         void onClientConnectedToGroupOwner(Socket socket);
     }
@@ -43,6 +47,7 @@ public class WifiDirectManager {
     private State currentState = State.DISCONNECTED;
     private List<WifiP2pDevice> peers = new ArrayList<>();
     private ConnectionCallback connectionCallback;
+    private DiscoveryCallback discoveryCallback;
 
     public WifiDirectManager(WifiP2pManager p2pManager, WifiP2pManager.Channel channel, Context context) {
         this.p2pManager = p2pManager;
@@ -56,6 +61,10 @@ public class WifiDirectManager {
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
     }
 
+    public void setDiscoveryCallback(DiscoveryCallback callback) {
+        this.discoveryCallback = callback;
+    }
+
     public void setConnectionCallback(ConnectionCallback callback) {
         this.connectionCallback = callback;
     }
@@ -67,6 +76,9 @@ public class WifiDirectManager {
             peers.addAll(peerList.getDeviceList());
             Log.i(TAG, "Wi-Fi Direct Peers found: " + peers.size());
             // No auto-connect anymore! Wait for manual connection from UI.
+            if (discoveryCallback != null) {
+                discoveryCallback.onPeersDiscovered(peers);
+            }
         }
     };
 
