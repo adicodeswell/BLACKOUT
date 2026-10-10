@@ -136,8 +136,51 @@ export class PeopleService {
     }
   }
 
-  async connectToPeer(address: string): Promise<Result<void>> {
-    return this.networkEngine.connect(address);
+  async connectToPeer(address: string, onProgress?: (state: 'CONNECTING' | 'HANDSHAKING' | 'CONNECTED') => void): Promise<Result<string>> {
+    onProgress?.('CONNECTING');
+
+    return new Promise((resolve) => {
+      let resolved = false;
+
+      const timeout = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve({ ok: false, error: { code: 'TIMEOUT', message: 'Connection timed out', retryable: true, module: 'NETWORK' }});
+      }, 15000);
+
+      const cleanup = this.networkEngine.subscribe((event) => {
+        if (resolved) return;
+
+        if (event.type === 'PEER_DISCOVERED' && event.peer.connection_state === 'CONNECTING') {
+          onProgress?.('CONNECTING');
+        }
+
+        // We use TEMP- as an indicator of handshaking from native side if we emit it,
+        // or just rely on CONNECTED.
+        if (event.type === 'PEER_DISCOVERED' && event.peer.connection_state === 'HANDSHAKING') {
+          onProgress?.('HANDSHAKING');
+        }
+
+        if (event.type === 'PEER_CONNECTED' && !event.peer.peer_id.startsWith('TEMP-')) {
+          resolved = true;
+          clearTimeout(timeout);
+          cleanup();
+          onProgress?.('CONNECTED');
+          resolve({ ok: true, data: event.peer.peer_id });
+        }
+      });
+
+      this.networkEngine.connect(address).then(res => {
+         if (!res.ok) {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timeout);
+            cleanup();
+            resolve({ ok: false, error: res.error });
+         }
+      });
+    });
   }
 
   async getPeers(): Promise<Result<PeerDto[]>> {

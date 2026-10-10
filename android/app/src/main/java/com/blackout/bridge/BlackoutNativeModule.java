@@ -117,8 +117,20 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                 String tempId = "TEMP-" + java.util.UUID.randomUUID().toString().substring(0,8);
                 PeerConnection peer = new PeerConnection(tempId, socket, messageHandler);
                 connectionManager.addConnection(peer);
+                
                 peer.start();
+                try {
+                    com.facebook.react.bridge.WritableMap peerMap = com.facebook.react.bridge.Arguments.createMap();
+                    peerMap.putString("peer_id", tempId);
+                    peerMap.putString("connection_state", "HANDSHAKING");
+                    peerMap.putString("transport", "WIFI_DIRECT");
+                    com.facebook.react.bridge.WritableMap event = com.facebook.react.bridge.Arguments.createMap();
+                    event.putString("type", "PEER_DISCOVERED");
+                    event.putMap("peer", peerMap);
+                    getReactApplicationContext().getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("NativeEvent", event);
+                } catch (Exception e) {}
                 handshakeManager.initiateHandshake(peer);
+
             });
 
             // Inject hardware adapters
@@ -178,9 +190,21 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                     String tempId = "TEMP-CLIENT-" + java.util.UUID.randomUUID().toString().substring(0,8);
                     PeerConnection peer = new PeerConnection(tempId, socket, messageHandler);
                     connectionManager.addConnection(peer);
+                    
                     peer.start();
+                    try {
+                        com.facebook.react.bridge.WritableMap peerMap = com.facebook.react.bridge.Arguments.createMap();
+                        peerMap.putString("peer_id", tempId);
+                        peerMap.putString("connection_state", "HANDSHAKING");
+                        peerMap.putString("transport", "WIFI_DIRECT");
+                        com.facebook.react.bridge.WritableMap event = com.facebook.react.bridge.Arguments.createMap();
+                        event.putString("type", "PEER_DISCOVERED");
+                        event.putMap("peer", peerMap);
+                        getReactApplicationContext().getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("NativeEvent", event);
+                    } catch (Exception e) {}
                     // Send dummy bytes to unblock read loop or handshake if needed
                     handshakeManager.initiateHandshake(peer);
+
                 }
             });
 

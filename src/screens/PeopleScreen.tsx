@@ -40,6 +40,10 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [tempName, setTempName] = useState('');
 
+  // Connection State
+  const [connectingPeerId, setConnectingPeerId] = useState<string | null>(null);
+  const [connectionProgress, setConnectionProgress] = useState<'CONNECTING' | 'HANDSHAKING' | 'CONNECTED' | null>(null);
+
   const PROFILE_PATH = RNFS.DocumentDirectoryPath + '/my_profile.json';
 
   useEffect(() => {
@@ -142,10 +146,20 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
     return (
       <TouchableOpacity
         style={[styles.peerCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
-        onPress={() => {
+        onPress={async () => {
           if (item.connection_state === 'DISCOVERED') {
-            Alert.alert("Connecting", "Connecting to peer. Please wait...");
-            peopleService.connectToPeer(item.peer_id);
+            setConnectingPeerId(item.peer_id);
+            setConnectionProgress('CONNECTING');
+            const result = await peopleService.connectToPeer(item.peer_id, (state) => {
+               setConnectionProgress(state);
+            });
+            setConnectingPeerId(null);
+            
+            if (result.ok) {
+               if (result.data) onStartChat(result.data);
+            } else {
+               Alert.alert("Connection Failed", result.error?.message || "Could not connect to peer.");
+            }
           } else if (item.connection_state === 'CONNECTED') {
             onStartChat(item.peer_id);
           }
@@ -160,12 +174,14 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
           <View style={styles.statusRow}>
             <View style={[styles.statusDot, { backgroundColor: isOnline ? theme.colors.networkActive : theme.colors.textMuted }]} />
             <Text style={[styles.statusText, { color: theme.colors.textSecondary }]}>
-              {isOnline ? 'Nearby' : 'Out of range'}
+              {connectingPeerId === item.peer_id && connectionProgress ? connectionProgress : (isOnline ? 'Nearby' : 'Out of range')}
             </Text>
           </View>
         </View>
-        <View style={[styles.actionBtn, { backgroundColor: theme.colors.primary }]}>
-          <Text style={styles.actionBtnText}>Message</Text>
+        <View style={[styles.actionBtn, { backgroundColor: connectingPeerId === item.peer_id ? theme.colors.surfaceElevated : theme.colors.primary }]}>
+          <Text style={[styles.actionBtnText, connectingPeerId === item.peer_id && { color: theme.colors.textPrimary }]}>
+            {connectingPeerId === item.peer_id ? 'Wait...' : 'Message'}
+          </Text>
         </View>
       </TouchableOpacity>
     );
