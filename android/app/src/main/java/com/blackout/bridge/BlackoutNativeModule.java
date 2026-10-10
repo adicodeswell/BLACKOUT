@@ -254,7 +254,6 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    @ReactMethod
     public void connect(String address, Promise promise) {
         try {
             if (networkEngine instanceof AndroidNetworkEngine) {

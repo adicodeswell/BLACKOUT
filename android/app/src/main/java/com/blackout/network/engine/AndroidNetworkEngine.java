@@ -66,6 +66,8 @@ public class AndroidNetworkEngine {
             
         } catch (IOException e) {
             Log.e(TAG, "Failed to start the Network Server", e);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start the BLE Engine", e);
         }
     }
 
@@ -89,6 +91,10 @@ public class AndroidNetworkEngine {
 
     public ConnectionManager getConnectionManager() {
         return connectionManager;
+    }
+
+    public WifiDirectManager getWifiDirectManager() {
+        return wifiManager;
     }
 
     public boolean isRunning() {

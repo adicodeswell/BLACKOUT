@@ -52,6 +52,10 @@ public class RoomDataEngine {
         return database.networkMessageDao().findPendingOutbound();
     }
 
+    public List<NetworkMessageEntity> getAllMessages() {
+        return database.networkMessageDao().getAllMessages();
+    }
+
     public void markDelivered(String messageId, long deliveredAt) {
         database.networkMessageDao().updateDeliveryState(messageId, "DELIVERED", deliveredAt);
     }

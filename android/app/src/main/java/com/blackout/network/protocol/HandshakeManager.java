@@ -20,7 +20,11 @@ public class HandshakeManager {
     private final String localDeviceId;
     private final ConnectionManager connectionManager;
 
-    public HandshakeManager(String localDeviceId, ConnectionManager connectionManager) {} // Deprecated
+    public HandshakeManager(String localDeviceId, ConnectionManager connectionManager) {
+        this.localDeviceId = localDeviceId;
+        this.connectionManager = connectionManager;
+        this.listener = null;
+    }
 
     public HandshakeManager(String localDeviceId, ConnectionManager connectionManager, HandshakeListener listener) {
         this.localDeviceId = localDeviceId;

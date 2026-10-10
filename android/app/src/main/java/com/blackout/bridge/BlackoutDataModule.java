@@ -37,7 +37,6 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    @ReactMethod
     public void getAllMessages(Promise promise) {
         try {
             java.util.List<com.blackout.data.entity.NetworkMessageEntity> list = dataEngine.getAllMessages();
