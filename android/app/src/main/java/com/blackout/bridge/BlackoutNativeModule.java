@@ -120,13 +120,14 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                 public void onPeersDiscovered(List<android.net.wifi.p2p.WifiP2pDevice> peers) {
                     try {
                         for (android.net.wifi.p2p.WifiP2pDevice device : peers) {
+                            if (device.status == android.net.wifi.p2p.WifiP2pDevice.CONNECTED) continue;
                             com.facebook.react.bridge.WritableMap peerMap = com.facebook.react.bridge.Arguments.createMap();
                             peerMap.putString("peer_id", device.deviceAddress);
                             peerMap.putString("name", device.deviceName);
                             peerMap.putString("connection_state", "DISCOVERED");
                             peerMap.putInt("signal_strength", 80);
-                            peerMap.putDouble("last_seen", System.currentTimeMillis());
-                            peerMap.putString("transport_type", "WIFI_DIRECT");
+                            peerMap.putDouble("last_seen_at", System.currentTimeMillis());
+                            peerMap.putString("transport", "WIFI_DIRECT");
 
                             com.facebook.react.bridge.WritableMap event = com.facebook.react.bridge.Arguments.createMap();
                             event.putString("type", "PEER_DISCOVERED");
@@ -138,6 +139,21 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                         }
                     } catch (Exception e) {
                         Log.e(TAG, "Failed to emit PEER_DISCOVERED", e);
+                    }
+                }
+                @Override
+                public void onConnectionStateChanged(String deviceAddress, com.blackout.network.discovery.WifiDirectManager.State state) {
+                    if (state == com.blackout.network.discovery.WifiDirectManager.State.CONNECTING) {
+                        com.facebook.react.bridge.WritableMap peerMap = com.facebook.react.bridge.Arguments.createMap();
+                        peerMap.putString("peer_id", deviceAddress);
+                        peerMap.putString("connection_state", "CONNECTING");
+                        peerMap.putString("transport", "WIFI_DIRECT");
+                        com.facebook.react.bridge.WritableMap event = com.facebook.react.bridge.Arguments.createMap();
+                        event.putString("type", "PEER_CONNECTED");
+                        event.putMap("peer", peerMap);
+                        getReactApplicationContext()
+                                .getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                                .emit("NativeEvent", event);
                     }
                 }
             });
@@ -248,15 +264,16 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             WritableArray peersArray = Arguments.createArray();
             if (networkEngine != null) {
                 // Get Wi-Fi Direct discovered peers
-                List<WifiP2pDevice> wifiPeers = networkEngine.getWifiPeers();
-                for (WifiP2pDevice device : wifiPeers) {
+                List<android.net.wifi.p2p.WifiP2pDevice> wifiPeers = networkEngine.getWifiPeers();
+                for (android.net.wifi.p2p.WifiP2pDevice device : wifiPeers) {
+                    if (device.status == android.net.wifi.p2p.WifiP2pDevice.CONNECTED) continue;
                     WritableMap peer = Arguments.createMap();
                     peer.putString("peer_id", device.deviceAddress);
                     peer.putString("name", device.deviceName);
                     peer.putString("connection_state", "DISCOVERED");
                     peer.putInt("signal_strength", 80);
-                    peer.putDouble("last_seen", System.currentTimeMillis());
-                    peer.putString("transport_type", "WIFI_DIRECT");
+                    peer.putDouble("last_seen_at", System.currentTimeMillis());
+                    peer.putString("transport", "WIFI_DIRECT");
                     peersArray.pushMap(peer);
                 }
                 
@@ -269,8 +286,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                         peer.putString("name", "Node " + peerId.substring(Math.max(0, peerId.length() - 4)));
                         peer.putString("connection_state", "CONNECTED");
                         peer.putInt("signal_strength", 100);
-                        peer.putDouble("last_seen", System.currentTimeMillis());
-                        peer.putString("transport_type", "WIFI_DIRECT");
+                        peer.putDouble("last_seen_at", System.currentTimeMillis());
+                        peer.putString("transport", "WIFI_DIRECT");
                         peersArray.pushMap(peer);
                     }
                 }

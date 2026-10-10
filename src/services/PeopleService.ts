@@ -68,8 +68,9 @@ export class PeopleService {
 
       if (msg.message_type === "DIRECT" || msg.message_type === "BROADCAST") {
         const peerId = msg.origin_device_id || "unknown-node";
-
-        const onSaved = () => {
+        
+        const processAndAck = () => {
+          this.addMessageToConversation(peerId, msg);
           if (msg.message_type === "DIRECT" && msg.origin_device_id) {
              const ackMsg: MessageDto = {
                protocol_version: 1,
@@ -83,19 +84,21 @@ export class PeopleService {
              };
              this.networkEngine.send(ackMsg);
           }
-          this.addMessageToConversation(peerId, msg);
         };
 
         if (this.dataEngine) {
-          this.dataEngine.saveMessage(msg).then(() => {
-            onSaved();
+          this.dataEngine.saveMessage(msg).then((res) => {
+            if (res.ok) {
+              processAndAck();
+            } else {
+              // Persistence failed: do not ACK.
+            }
           }).catch(() => {
-            // still try to add it in memory even if saving fails?
-            // Actually if it fails, maybe we shouldn't ACK, but let's be safe.
-            onSaved();
+            // Unexpected error: do not ACK.
+            return;
           });
         } else {
-          onSaved();
+          processAndAck();
         }
       }
     } else if (event.type === "PEER_CONNECTED" || event.type === "PEER_DISCOVERED") {

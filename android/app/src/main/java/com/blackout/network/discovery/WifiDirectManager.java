@@ -23,6 +23,7 @@ import java.util.List;
 public class WifiDirectManager {
     public interface DiscoveryCallback {
         void onPeersDiscovered(List<WifiP2pDevice> peers);
+        void onConnectionStateChanged(String deviceAddress, State state);
     }
 
     public interface ConnectionCallback {
@@ -117,6 +118,9 @@ public class WifiDirectManager {
         
         Log.i(TAG, "Connecting to address: " + deviceAddress);
         currentState = State.CONNECTING;
+        if (discoveryCallback != null) {
+            discoveryCallback.onConnectionStateChanged(deviceAddress, currentState);
+        }
         
         // Stop discovery before connecting to increase success rate
         p2pManager.stopPeerDiscovery(channel, null);

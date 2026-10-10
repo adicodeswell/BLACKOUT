@@ -18,20 +18,39 @@ public class ConnectionManager {
     /**
      * Registers and starts a new peer connection.
      */
-        public synchronized void updateConnectionId(String oldId, String newId) {
-        PeerConnection conn = connections.remove(oldId);
-        if (conn != null) {
-            if (connections.containsKey(newId)) {
-                Log.w(TAG, "Replacing existing connection during rename for peer: " + newId);
-                PeerConnection old = connections.remove(newId);
-                if (old != null) {
-                    old.disconnect();
-                }
-            }
-            conn.setPeerId(newId);
-            connections.put(newId, conn);
-            Log.i(TAG, "Renamed connection " + oldId + " to " + newId);
+        public synchronized boolean updateConnectionId(String oldId, String newId, String localDeviceId) {
+        PeerConnection conn = connections.get(oldId);
+        if (conn == null) return false;
+        
+        if (oldId.equals(newId)) {
+            return true;
         }
+
+        PeerConnection existing = connections.get(newId);
+        if (existing != null) {
+            if (existing.isReady()) {
+                Log.w(TAG, "Collision: existing connection already READY. Dropping new.");
+                connections.remove(oldId);
+                conn.disconnect();
+                return false;
+            }
+            if (localDeviceId != null && localDeviceId.compareTo(newId) < 0) {
+                Log.w(TAG, "Collision: keeping existing connection deterministically.");
+                connections.remove(oldId);
+                conn.disconnect();
+                return false;
+            } else {
+                Log.w(TAG, "Collision: replacing existing connection deterministically.");
+                connections.remove(newId);
+                existing.disconnect();
+            }
+        }
+
+        connections.remove(oldId);
+        conn.setPeerId(newId);
+        connections.put(newId, conn);
+        Log.i(TAG, "Renamed connection " + oldId + " to " + newId);
+        return true;
     }
 
     public synchronized void addConnection(PeerConnection connection) {
@@ -69,7 +88,11 @@ public class ConnectionManager {
         if (peerId == null || peerId.startsWith("TEMP-")) {
             return null;
         }
-        return connections.get(peerId);
+        PeerConnection conn = connections.get(peerId);
+        if (conn != null && conn.isReady()) {
+            return conn;
+        }
+        return null;
     }
 
     public synchronized PeerConnection getConnection(String peerId) {
@@ -91,9 +114,9 @@ public class ConnectionManager {
      */
     public synchronized List<String> getActivePeerIds() {
         List<String> activeIds = new ArrayList<>();
-        for (String id : connections.keySet()) {
-            if (!id.startsWith("TEMP-")) {
-                activeIds.add(id);
+        for (PeerConnection conn : connections.values()) {
+            if (conn.isReady()) {
+                activeIds.add(conn.getPeerId());
             }
         }
         return activeIds;

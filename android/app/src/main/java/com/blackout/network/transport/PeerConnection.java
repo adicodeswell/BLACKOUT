@@ -26,6 +26,7 @@ public class PeerConnection {
     // Queue for messages waiting to be sent out
     private final BlockingQueue<byte[]> outbox = new LinkedBlockingQueue<>();
     private volatile boolean isConnected = false;
+    private volatile boolean isReady = false;
 
     public interface ConnectionListener {
         void onMessageReceived(String peerId, byte[] payload);
@@ -114,6 +115,13 @@ public class PeerConnection {
     public String getPeerId() {
         return peerId;
     }
+    public boolean isReady() {
+        return isReady;
+    }
+    public void setReady(boolean ready) {
+        this.isReady = ready;
+    }
+
     public void setPeerId(String newId) {
         this.peerId = newId;
     }

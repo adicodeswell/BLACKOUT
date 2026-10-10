@@ -66,14 +66,16 @@ public class HandshakeManager {
                         .payload("{\"ack_to\": \"" + msg.getMessageId() + "\"}")
                         .build();
                 // Rename the connection to the true sender's ID!
-                connectionManager.updateConnectionId(peer.getPeerId(), msg.getOriginDeviceId());
+                boolean promoted1 = connectionManager.updateConnectionId(peer.getPeerId(), msg.getOriginDeviceId(), localDeviceId);
+                if (!promoted1) return; // Collision lost
                 sendToPeer(peer, ack);
                 Log.i(TAG, "Sent HELLO_ACK to peer: " + msg.getOriginDeviceId());
                 break;
                 
             case HELLO_ACK:
                 // Rename the client connection to the true receiver's ID!
-                connectionManager.updateConnectionId(peer.getPeerId(), msg.getOriginDeviceId());
+                boolean promoted2 = connectionManager.updateConnectionId(peer.getPeerId(), msg.getOriginDeviceId(), localDeviceId);
+                if (!promoted2) return; // Collision lost
                 NetworkMessage caps = new NetworkMessage.Builder()
                         .protocolVersion(1)
                         .messageId(UUID.randomUUID().toString())
@@ -111,9 +113,8 @@ public class HandshakeManager {
                 
             case QUEUE_SUMMARY:
                 Log.i(TAG, "Handshake COMPLETE. Peer is fully READY: " + msg.getOriginDeviceId());
+                peer.setReady(true);
                 if (listener != null) listener.onHandshakeComplete(msg.getOriginDeviceId());
-                // In Phase 4, we will use the payload payload to trigger syncs.
-                // Here we would upgrade the PeerInfo status from HANDSHAKING to READY.
                 break;
                 
             default:
