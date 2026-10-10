@@ -215,6 +215,10 @@ export class DevDataEngine implements DataEngine {
     };
   }
 
+  async getAllMessages(): Promise<Result<MessageDto[]>> {
+    return { ok: true, data: [] };
+  }
+
   async getPendingOutbound(): Promise<Result<MessageDto[]>> {
     return { ok: true, data: [] };
   }

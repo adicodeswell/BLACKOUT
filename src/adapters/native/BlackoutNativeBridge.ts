@@ -10,7 +10,7 @@ import type {
 export interface BlackoutNativeBridge {
   pingNative(): Promise<Result<{ status: string; native: boolean }>>;
 
-  initialize(): Promise<Result<void>>;
+  initialize(): Promise<Result<string>>;
   startNetworking(): Promise<Result<void>>;
   stopNetworking(): Promise<Result<void>>;
 

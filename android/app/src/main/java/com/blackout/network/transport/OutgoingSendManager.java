@@ -18,20 +18,20 @@ public class OutgoingSendManager {
         this.connectionManager = connectionManager;
     }
 
-    public void sendDirect(NetworkMessage msg, String peerId) {
+    public boolean sendDirect(NetworkMessage msg, String peerId) {
         PeerConnection peer = connectionManager.getConnection(peerId);
         if (peer != null) {
             try {
                 byte[] bytes = MessageSerializer.serialize(msg);
                 peer.send(bytes);
+                return true;
             } catch (JSONException e) {
                 Log.e(TAG, "Failed to serialize direct message", e);
+                return false;
             }
         } else {
-            Log.w(TAG, "Peer ID mismatch for " + peerId + ". Broadcasting to mesh instead.");
-            // Because Wi-Fi Direct MAC addresses don't always match the Socket ID, 
-            // fallback to mesh broadcast. The destination UI will filter it.
-            broadcast(msg);
+            Log.e(TAG, "Peer ID mismatch or no connection for " + peerId + ".");
+            return false;
         }
     }
 

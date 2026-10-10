@@ -34,6 +34,10 @@ export class DataEngineAdapter implements DataEngine {
     return this.engine.createReport(request);
   }
 
+  getAllMessages(): Promise<Result<MessageDto[]>> {
+    return this.engine.getAllMessages();
+  }
+
   saveMessage(message: MessageDto): Promise<Result<void>> {
     return this.engine.saveMessage(message);
   }

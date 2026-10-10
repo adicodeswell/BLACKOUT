@@ -38,6 +38,7 @@ export interface MessageDto {
   payload: unknown;
   encryption?: MessageEncryption;
   signature: string;
+  _local_delivery_state?: DeliveryState;
 }
 
 export type DeliveryState =

@@ -50,10 +50,34 @@ export class EmergencyReportService {
     this.networkEngine.subscribe(async (event) => {
       if (event.type === 'MESSAGE_RECEIVED') {
         const msg = event.message;
+        if (msg.message_type === "ACK" && msg.payload) {
+          const ackTo = (msg.payload as any).ack_to;
+          if (ackTo) {
+             this.dataEngine.markDelivered(ackTo, Date.now()).catch(() => {});
+          }
+        }
+
         if (msg.message_type === 'REPORT' && msg.payload) {
           try {
             // Save incoming mesh reports into our local SQLite
             await this.dataEngine.createReport(msg.payload as any);
+            
+            // Send ACK back
+            const ackMsg: MessageDto = {
+              protocol_version: 1,
+              message_id: "ack_" + msg.message_id,
+              origin_device_id: (this.networkEngine as any).localNodeId || "unknown",
+              destination_device_id: msg.origin_device_id,
+              message_type: "ACK",
+              created_at: Date.now(),
+              ttl: 1,
+              hop_count: 0,
+              priority: "NORMAL",
+              payload_hash: "",
+              payload: { ack_to: msg.message_id },
+              signature: ""
+            };
+            this.networkEngine.send(ackMsg);
           } catch (e) {
             console.error('Failed to save incoming mesh report', e);
           }
@@ -115,7 +139,10 @@ export class EmergencyReportService {
         payload_hash: "", // Payload hash calculation performed by message serializer/signer
         payload: localReport,
         signature: "",
+        _local_delivery_state: "QUEUED",
       };
+
+      await this.dataEngine.saveMessage(messageEnvelope);
 
       broadcastAttempted = true;
       const broadcastResult = await this.networkEngine.broadcast(messageEnvelope);

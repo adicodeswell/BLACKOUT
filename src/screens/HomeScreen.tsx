@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useServices } from '../services/ServiceContext';
@@ -55,6 +56,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           setNetworkStatus('ACTIVE');
         } else {
           setNetworkStatus('STOPPED');
+          if (!startRes.ok && startRes.error?.message?.includes("BLUETOOTH_DISABLED")) {
+            Alert.alert("Bluetooth Required", "Please enable Bluetooth in your device settings to discover nearby peers.");
+          } else if (!startRes.ok && startRes.error?.code === "PERMISSION_DENIED") {
+            Alert.alert("Permission Required", startRes.error.message);
+          }
         }
 
         const peersRes = await networkEngine.getPeers();

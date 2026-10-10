@@ -72,12 +72,12 @@ public class BleDiscoveryEngine {
     }
 
     @SuppressLint("MissingPermission")
-    public void start() {
+    public void start() throws Exception {
         if (isDiscovering) return;
         
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
             Log.e(TAG, "Bluetooth is not supported or not enabled.");
-            return;
+            throw new Exception("BLUETOOTH_DISABLED");
         }
 
         advertiser = bluetoothAdapter.getBluetoothLeAdvertiser();

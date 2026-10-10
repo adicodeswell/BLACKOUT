@@ -17,6 +17,9 @@ public interface NetworkMessageDao {
     @Query("SELECT * FROM network_messages WHERE messageId = :id")
     NetworkMessageEntity findById(String id);
 
+    @Query("SELECT * FROM network_messages ORDER BY createdAt ASC")
+    List<NetworkMessageEntity> getAllMessages();
+
     @Query("SELECT * FROM network_messages WHERE deliveryState = 'QUEUED' ORDER BY createdAt ASC")
     List<NetworkMessageEntity> findPendingOutbound();
 

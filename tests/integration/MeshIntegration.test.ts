@@ -36,7 +36,10 @@ class VirtualMeshHub {
   notifyConnect(connectorId: string, targetId: string) {
     const target = this.nodes.find(n => n.localNodeId === targetId);
     if (target) {
-      target.notifyRaw({ type: "PEER_CONNECTED", peer_id: connectorId });
+      target.notifyRaw({ 
+        type: "PEER_CONNECTED", 
+        peer: { peer_id: connectorId, transport: "WIFI_DIRECT", connection_state: "CONNECTED", last_seen_at: Date.now(), capabilities: [] } 
+      });
     }
   }
 
@@ -44,7 +47,13 @@ class VirtualMeshHub {
     const peers: PeerDto[] = [];
     this.nodes.forEach(node => {
       if (node.localNodeId !== nodeId) {
-        peers.push({ peer_id: node.localNodeId, name: `Virtual Node ${node.localNodeId}`, status: "CONNECTED", rssi: -50, last_seen_at: Date.now() });
+        peers.push({
+          peer_id: node.localNodeId,
+          transport: "WIFI_DIRECT",
+          connection_state: "CONNECTED",
+          last_seen_at: Date.now(),
+          capabilities: []
+        });
       }
     });
     return peers;
@@ -76,9 +85,10 @@ class SimulatedNetworkEngine implements NetworkEngine {
   }
   
   async connect(peerId: string): Promise<Result<void>> {
-    // Notify ourselves that we connected to peerId
-    this.notifyRaw({ type: "PEER_CONNECTED", peer_id: peerId });
-    // Notify the target that we connected to them (simulating actual physical mesh protocol)
+    this.notifyRaw({ 
+      type: "PEER_CONNECTED", 
+      peer: { peer_id: peerId, transport: "WIFI_DIRECT", connection_state: "CONNECTED", last_seen_at: Date.now(), capabilities: [] } 
+    });
     setTimeout(() => this.hub.notifyConnect(this.localNodeId, peerId), 10);
     return { ok: true, data: undefined };
   }
@@ -133,6 +143,18 @@ class MockDataEngine implements Partial<DataEngine> {
     return { ok: true, data: undefined };
   }
 
+  async getAllMessages(): Promise<Result<MessageDto[]>> {
+    return { ok: true, data: this.savedMessages };
+  }
+
+  async getPendingOutbound(): Promise<Result<MessageDto[]>> {
+    return { ok: true, data: [] };
+  }
+
+  async markDelivered(messageId: string, _deliveredAt: number): Promise<Result<void>> {
+    return { ok: true, data: undefined };
+  }
+
   async createReport(request: any): Promise<Result<EmergencyReportDto>> {
     this.createdReports.push(request);
     return {
@@ -153,7 +175,7 @@ class MockDataEngine implements Partial<DataEngine> {
 }
 
 class MockGeoEngine implements Partial<GeoEngine> {
-  async getCurrentLocation() {
+  async getCurrentLocation(): Promise<Result<any>> {
     return { ok: true, data: { latitude: 37.7749, longitude: -122.4194, accuracy_m: 10, timestamp: Date.now(), provider: "GPS" } as any };
   }
 }
@@ -178,24 +200,24 @@ describe("Mesh Network Integration Tests (PeopleService & EmergencyReportService
 
     netA = new SimulatedNetworkEngine(hub, "nodeA");
     dataA = new MockDataEngine("nodeA");
-    peopleA = new PeopleService(netA, dataA as DataEngine);
+    peopleA = new PeopleService(netA, dataA as any as DataEngine);
     netA.localNodeId = (peopleA as any).localNodeId; 
     dataA.nodeId = netA.localNodeId;
-    reportA = new EmergencyReportService(dataA as DataEngine, new MockGeoEngine() as GeoEngine, netA);
+    reportA = new EmergencyReportService(dataA as any as DataEngine, new MockGeoEngine() as GeoEngine, netA);
 
     netB = new SimulatedNetworkEngine(hub, "nodeB");
     dataB = new MockDataEngine("nodeB");
-    peopleB = new PeopleService(netB, dataB as DataEngine);
+    peopleB = new PeopleService(netB, dataB as any as DataEngine);
     netB.localNodeId = (peopleB as any).localNodeId;
     dataB.nodeId = netB.localNodeId;
-    reportB = new EmergencyReportService(dataB as DataEngine, new MockGeoEngine() as GeoEngine, netB);
+    reportB = new EmergencyReportService(dataB as any as DataEngine, new MockGeoEngine() as GeoEngine, netB);
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+  const delay = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
 
   it("should bidirectionally discover and connect peers successfully (Node A connects to Node B)", async () => {
     let peersA: PeerDto[] = [];
@@ -206,7 +228,7 @@ describe("Mesh Network Integration Tests (PeopleService & EmergencyReportService
 
     // Node A connects to Node B 
     // This simulates clicking a peer in the "Nearby" section on Node A's UI
-    netA.notifyRaw({ type: "PEER_CONNECTED", peer_id: netB.localNodeId }); netB.notifyRaw({ type: "PEER_CONNECTED", peer_id: netA.localNodeId });
+    (netA as any).notifyRaw({ type: "PEER_CONNECTED", peer_id: netB.localNodeId }); (netB as any).notifyRaw({ type: "PEER_CONNECTED", peer_id: netA.localNodeId });
     
     // Wait for the simulated mesh hub to propagate the connection to B
     await delay(30);
@@ -222,7 +244,7 @@ describe("Mesh Network Integration Tests (PeopleService & EmergencyReportService
 
   it("should allow Node A to send a Direct Message immediately after discovering Node B (Nearby Section Message Button)", async () => {
     // 1. Discovery/Connection phase
-    netA.notifyRaw({ type: "PEER_CONNECTED", peer_id: netB.localNodeId }); netB.notifyRaw({ type: "PEER_CONNECTED", peer_id: netA.localNodeId });
+    (netA as any).notifyRaw({ type: "PEER_CONNECTED", peer_id: netB.localNodeId }); (netB as any).notifyRaw({ type: "PEER_CONNECTED", peer_id: netA.localNodeId });
     await delay(30);
 
     // 2. Simulating User on Node A clicking the 'Message' button in Nearby section
@@ -294,7 +316,7 @@ describe("Mesh Network Integration Tests (PeopleService & EmergencyReportService
     });
 
     expect(reportRes.ok).toBe(true);
-    expect(reportRes.data?.broadcastAttempted).toBe(true);
+    expect((!reportRes.ok ? false : reportRes.data?.broadcastAttempted)).toBe(true);
 
     await delay(50); 
 

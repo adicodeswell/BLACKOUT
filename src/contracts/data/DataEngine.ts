@@ -28,6 +28,7 @@ export interface DataEngine {
   ): Promise<Result<EmergencyReportDto>>;
 
   saveMessage(message: MessageDto): Promise<Result<void>>;
+  getAllMessages(): Promise<Result<MessageDto[]>>;
   getMessage(messageId: string): Promise<Result<MessageDto>>;
   getPendingOutbound(): Promise<Result<MessageDto[]>>;
   markDelivered(

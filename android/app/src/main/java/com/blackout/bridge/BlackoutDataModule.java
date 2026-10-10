@@ -37,6 +37,35 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    @ReactMethod
+    public void getAllMessages(Promise promise) {
+        try {
+            java.util.List<com.blackout.data.entity.NetworkMessageEntity> list = dataEngine.getAllMessages();
+            com.facebook.react.bridge.WritableArray arr = com.facebook.react.bridge.Arguments.createArray();
+            for (com.blackout.data.entity.NetworkMessageEntity e : list) {
+                // convert to JS map
+                com.facebook.react.bridge.WritableMap map = com.facebook.react.bridge.Arguments.createMap();
+                map.putString("message_id", e.messageId);
+                map.putString("origin_device_id", e.originDeviceId);
+                if (e.destinationDeviceId != null) map.putString("destination_device_id", e.destinationDeviceId);
+                map.putString("message_type", e.messageType);
+                map.putDouble("created_at", e.createdAt);
+                map.putInt("ttl", e.ttl);
+                map.putInt("hop_count", e.hopCount);
+                map.putString("priority", e.priority);
+                map.putString("payload_hash", e.payloadHash);
+                map.putString("_payload_raw", e.payload);
+                map.putString("signature", e.signature);
+                map.putString("_local_delivery_state", e.deliveryState);
+                arr.pushMap(map);
+            }
+            promise.resolve(arr);
+        } catch (Exception e) {
+            promise.reject("GET_ALL_ERROR", e);
+        }
+    }
+
+    @ReactMethod
     public void saveMessage(String messageJson, Promise promise) {
         try {
             NetworkMessage msg = MessageSerializer.deserialize(messageJson.getBytes(StandardCharsets.UTF_8));

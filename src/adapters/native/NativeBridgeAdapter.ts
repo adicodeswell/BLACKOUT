@@ -17,6 +17,15 @@ function mapError(error: any): BlackoutError {
 }
 
 export class NativeBridgeAdapter {
+  async connect(address: string): Promise<Result<void>> {
+    try {
+      if ((BlackoutNativeModule as any).connect) { await (BlackoutNativeModule as any).connect(address); }
+      return { ok: true, data: undefined };
+    } catch (err: any) {
+      return { ok: false, error: { code: "CONNECT_FAILED", message: String(err), retryable: true, module: "NETWORK" } };
+    }
+  }
+
   async pingNative(): Promise<{ ok: boolean; data?: any; error?: any }> {
     try {
       const data = await BlackoutNativeModule.pingNative();
@@ -26,10 +35,10 @@ export class NativeBridgeAdapter {
     }
   }
 
-  async initialize(nodeId: string): Promise<Result<void>> {
+  async initialize(nodeId?: string): Promise<Result<string>> {
     try {
-      await BlackoutNativeModule.initialize(nodeId);
-      return { ok: true, data: undefined };
+      const actualId = await BlackoutNativeModule.initialize(nodeId || "");
+      return { ok: true, data: actualId };
     } catch (error) {
       return { ok: false, error: mapError(error) };
     }
@@ -89,6 +98,24 @@ export class NativeBridgeAdapter {
           event: {
             type: 'PEER_DISCONNECTED',
             peer_id: rawEvent.peer_id,
+          }
+        });
+      } else if (rawEvent.type === 'PEER_CONNECTED') {
+        const peer = rawEvent.peer || { peer_id: rawEvent.peer_id, transport: 'WIFI_DIRECT', connection_state: 'CONNECTED', last_seen_at: Date.now(), capabilities: [] };
+        listener({
+          type: 'NETWORK',
+          event: {
+            type: 'PEER_CONNECTED',
+            peer: peer,
+          }
+        });
+      } else if (rawEvent.type === 'PEER_DISCOVERED') {
+        const peer = rawEvent.peer || { peer_id: rawEvent.peer_id, transport: 'WIFI_DIRECT', connection_state: 'DISCOVERED', last_seen_at: Date.now(), capabilities: [] };
+        listener({
+          type: 'NETWORK',
+          event: {
+            type: 'PEER_DISCOVERED',
+            peer: peer,
           }
         });
       }

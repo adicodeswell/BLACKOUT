@@ -53,10 +53,11 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void initialize(String nodeId, Promise promise) {
+    public void initialize(String ignoredNodeId, Promise promise) {
         try {
             if (networkEngine != null) {
-                promise.resolve(null);
+                DeviceIdentity identity = new DeviceIdentity(getReactApplicationContext());
+                promise.resolve(identity.getDeviceId());
                 return;
             }
             
@@ -64,7 +65,17 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             DeviceIdentity identity = new DeviceIdentity(ctx);
             connectionManager = new ConnectionManager();
             outgoingSendManager = new OutgoingSendManager(connectionManager);
-            HandshakeManager handshakeManager = new HandshakeManager(nodeId, connectionManager);
+            HandshakeManager handshakeManager = new HandshakeManager(identity.getDeviceId(), connectionManager, new HandshakeManager.HandshakeListener() {
+                @Override
+                public void onHandshakeComplete(String peerId) {
+                    WritableMap event = com.facebook.react.bridge.Arguments.createMap();
+                    event.putString("type", "PEER_CONNECTED");
+                    event.putString("peer_id", peerId);
+                    try {
+                        getReactApplicationContext().getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("NativeEvent", event);
+                    } catch (Exception e) {}
+                }
+            });
             
             MessageHandler messageHandler = new MessageHandler(connectionManager, handshakeManager, new MessageHandler.AppMessageListener() {
                 @Override
@@ -86,7 +97,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             
             NetworkServer networkServer = new NetworkServer(18888, socket -> {
                 // Create a placeholder connection. HandshakeManager updates this later in Phase 7.
-                PeerConnection peer = new PeerConnection("UNKNOWN-PEER", socket, messageHandler);
+                String tempId = "TEMP-" + java.util.UUID.randomUUID().toString().substring(0,8);
+                PeerConnection peer = new PeerConnection(tempId, socket, messageHandler);
                 connectionManager.addConnection(peer);
                 peer.start();
                 handshakeManager.initiateHandshake(peer);
@@ -104,7 +116,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             wifiManager.setConnectionCallback(new WifiDirectManager.ConnectionCallback() {
                 @Override
                 public void onClientConnectedToGroupOwner(java.net.Socket socket) {
-                    PeerConnection peer = new PeerConnection("CLIENT-SOCKET", socket, messageHandler);
+                    String tempId = "TEMP-CLIENT-" + java.util.UUID.randomUUID().toString().substring(0,8);
+                    PeerConnection peer = new PeerConnection(tempId, socket, messageHandler);
                     connectionManager.addConnection(peer);
                     peer.start();
                     // Send dummy bytes to unblock read loop or handshake if needed
@@ -114,7 +127,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
 
             networkEngine = new AndroidNetworkEngine(identity, bleEngine, wifiManager, connectionManager, networkServer);
             
-            promise.resolve(null);
+            promise.resolve(identity.getDeviceId());
         } catch (Exception e) {
             promise.reject("INIT_ERROR", e);
         }
@@ -167,7 +180,11 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             // Wait, MessageSerializer expects snake_case for field names. 
             // In a real production app, we'd ensure React Native sends the snake_case keys correctly.
             if (msg.getDestinationDeviceId() != null && !msg.getDestinationDeviceId().isEmpty()) {
-                outgoingSendManager.sendDirect(msg, msg.getDestinationDeviceId());
+                boolean success = outgoingSendManager.sendDirect(msg, msg.getDestinationDeviceId());
+                if (!success) {
+                    promise.reject("NO_CONNECTION", "No active connection to the specified peer");
+                    return;
+                }
             } else {
                 outgoingSendManager.broadcast(msg);
             }
@@ -233,6 +250,22 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             promise.resolve(peersArray);
         } catch (Exception e) {
             promise.reject("GET_PEERS_ERROR", e);
+        }
+    }
+
+    @ReactMethod
+    @ReactMethod
+    public void connect(String address, Promise promise) {
+        try {
+            if (networkEngine instanceof AndroidNetworkEngine) {
+                WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
+                if (wdm != null) {
+                    wdm.connectToAddress(address);
+                }
+            }
+            promise.resolve(null);
+        } catch (Exception e) {
+            promise.reject("CONNECT_ERROR", e);
         }
     }
 

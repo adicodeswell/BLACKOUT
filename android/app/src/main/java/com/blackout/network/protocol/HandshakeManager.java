@@ -11,14 +11,21 @@ import java.util.UUID;
  * Manages the BLACKOUT HELLO and CAPABILITIES handshake protocol.
  */
 public class HandshakeManager {
+    public interface HandshakeListener {
+        void onHandshakeComplete(String peerId);
+    }
+    private HandshakeListener listener;
     private static final String TAG = "HandshakeManager";
     
     private final String localDeviceId;
     private final ConnectionManager connectionManager;
 
-    public HandshakeManager(String localDeviceId, ConnectionManager connectionManager) {
+    public HandshakeManager(String localDeviceId, ConnectionManager connectionManager) {} // Deprecated
+
+    public HandshakeManager(String localDeviceId, ConnectionManager connectionManager, HandshakeListener listener) {
         this.localDeviceId = localDeviceId;
         this.connectionManager = connectionManager;
+        this.listener = listener;
     }
 
     /**
@@ -61,6 +68,8 @@ public class HandshakeManager {
                 break;
                 
             case HELLO_ACK:
+                // Rename the client connection to the true receiver's ID!
+                connectionManager.updateConnectionId(peer.getPeerId(), msg.getOriginDeviceId());
                 NetworkMessage caps = new NetworkMessage.Builder()
                         .protocolVersion(1)
                         .messageId(UUID.randomUUID().toString())
@@ -98,6 +107,7 @@ public class HandshakeManager {
                 
             case QUEUE_SUMMARY:
                 Log.i(TAG, "Handshake COMPLETE. Peer is fully READY: " + msg.getOriginDeviceId());
+                if (listener != null) listener.onHandshakeComplete(msg.getOriginDeviceId());
                 // In Phase 4, we will use the payload payload to trigger syncs.
                 // Here we would upgrade the PeerInfo status from HANDSHAKING to READY.
                 break;

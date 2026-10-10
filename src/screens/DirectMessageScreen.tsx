@@ -87,7 +87,9 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
               {timeStr}
             </Text>
             {isOutgoing && (
-              <Text style={[styles.statusTag, { color: 'rgba(255,255,255,0.9)' }]}> ✓ Mesh Sent</Text>
+              <Text style={[styles.statusTag, { color: item._local_delivery_state === 'DELIVERED' ? '#4CAF50' : 'rgba(255,255,255,0.7)' }]}>
+                {item._local_delivery_state === 'DELIVERED' ? '✓✓ Delivered' : item._local_delivery_state === 'QUEUED' ? '⏳ Queued' : '✓ Sent'}
+              </Text>
             )}
           </View>
         </View>

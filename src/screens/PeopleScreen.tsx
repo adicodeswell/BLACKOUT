@@ -173,13 +173,13 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
           <Text style={[styles.myName, { color: theme.colors.textPrimary }]}>{userName}</Text>
           <Text style={[styles.myStatus, { color: theme.colors.networkActive }]}>Online & Discoverable</Text>
         </View>
-        <NavIcon name="SETTINGS" color={theme.colors.textMuted} size={20} />
+        <NavIcon name={"Settings" as any} color={theme.colors.textMuted} size={20} />
       </TouchableOpacity>
 
       {/* Global Search Bar */}
       <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
         <View style={[styles.searchBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}>
-          <NavIcon name="SEARCH" color={theme.colors.textMuted} size={18} />
+          <NavIcon name={"Search" as any} color={theme.colors.textMuted} size={18} />
           <TextInput
             style={[styles.searchInput, { color: theme.colors.textPrimary }]}
             placeholder="Search friends and nearby people..."

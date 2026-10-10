@@ -89,6 +89,22 @@ export class RoomDataEngineAdapter implements DataEngine {
     }
   }
 
+  async getAllMessages(): Promise<Result<MessageDto[]>> {
+    try {
+      const res = await BlackoutDataModule.getAllMessages();
+      const parsed = res.map((m: any) => {
+        if (m._payload_raw) {
+          try { m.payload = JSON.parse(m._payload_raw); } catch { m.payload = m._payload_raw; }
+          delete m._payload_raw;
+        }
+        return m;
+      });
+      return { ok: true, data: parsed };
+    } catch (e: any) {
+      return { ok: false, error: { code: "DB_ERROR", message: String(e), retryable: false, module: "DATA" } };
+    }
+  }
+
   async saveMessage(message: MessageDto): Promise<Result<void>> {
     try {
       const nativeModule = this.getNativeModule();

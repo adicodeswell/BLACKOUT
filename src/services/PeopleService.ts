@@ -18,7 +18,10 @@ export type MessageListener = (message: MessageDto) => void;
 export type PeerListener = (peers: PeerDto[]) => void;
 
 export class PeopleService {
-  private localNodeId = "node_" + Math.random().toString(36).substring(2, 9);
+  private _fallbackNodeId = "node_" + Math.random().toString(36).substring(2, 9);
+  public get localNodeId(): string {
+    return (this.networkEngine as any).localNodeId || this._fallbackNodeId;
+  }
   private networkEngine: NetworkEngine;
   private dataEngine?: DataEngine;
   private conversations: Map<string, MessageDto[]> = new Map();
@@ -28,7 +31,8 @@ export class PeopleService {
 
   constructor(networkEngine: NetworkEngine, dataEngine?: DataEngine) {
     this.networkEngine = networkEngine;
-    if ((this.networkEngine as any).localNodeId !== undefined) { (this.networkEngine as any).localNodeId = this.localNodeId; }
+    setTimeout(() => this.loadHistory(), 500);
+    // Let NetworkEngine manage the canonical ID
     this.dataEngine = dataEngine;
 
     // Subscribe to incoming network events
@@ -38,9 +42,33 @@ export class PeopleService {
   }
 
   private handleNetworkEvent(event: NetworkEvent) {
+    if (event.type === "PEER_CONNECTED") {
+      this.flushQueue();
+    }
     if (event.type === "MESSAGE_RECEIVED") {
       const msg = event.message;
+      if (msg.message_type === "ACK" && msg.payload) {
+        const ackTo = (msg.payload as any).ack_to;
+        if (ackTo && this.dataEngine) {
+          this.dataEngine.markDelivered(ackTo, Date.now()).catch(() => {});
+        }
+      }
+
       if (msg.message_type === "DIRECT" || msg.message_type === "BROADCAST") {
+        // Auto ACK direct messages
+        if (msg.message_type === "DIRECT" && msg.origin_device_id) {
+           const ackMsg: MessageDto = {
+             protocol_version: 1,
+             message_id: "ack_" + msg.message_id,
+             origin_device_id: this.localNodeId,
+             destination_device_id: msg.origin_device_id,
+             message_type: "ACK",
+             created_at: Date.now(),
+             ttl: 1, hop_count: 0, priority: "NORMAL",
+             payload_hash: "", payload: { ack_to: msg.message_id }, signature: ""
+           };
+           this.networkEngine.send(ackMsg);
+        }
         const peerId = msg.origin_device_id || "unknown-node";
         this.addMessageToConversation(peerId, msg);
 
@@ -57,6 +85,18 @@ export class PeopleService {
     }
   }
 
+  public async loadHistory() {
+    if (this.dataEngine) {
+      const res = await this.dataEngine.getAllMessages();
+      if (res.ok) {
+        res.data.forEach(msg => {
+          const peerId = msg.origin_device_id === this.localNodeId ? msg.destination_device_id : msg.origin_device_id;
+          if (peerId) this.addMessageToConversation(peerId, msg);
+        });
+      }
+    }
+  }
+
   private addMessageToConversation(peerId: string, message: MessageDto) {
     const list = this.conversations.get(peerId) || [];
     // Avoid duplicates
@@ -67,6 +107,10 @@ export class PeopleService {
       this.conversations.set(peerId, list);
       this.notifyMessageListeners(peerId, message);
     }
+  }
+
+  async connectToPeer(address: string): Promise<Result<void>> {
+    return this.networkEngine.connect(address);
   }
 
   async getPeers(): Promise<Result<PeerDto[]>> {
@@ -185,6 +229,21 @@ export class PeopleService {
         entry.listener(message);
       }
     });
+  }
+
+  private async flushQueue() {
+    if (!this.dataEngine) return;
+    const pendingRes = await this.dataEngine.getPendingOutbound();
+    if (pendingRes.ok && pendingRes.data.length > 0) {
+      for (const msg of pendingRes.data) {
+        // Attempt to resend
+        if (msg.message_type === "DIRECT" && msg.destination_device_id) {
+          this.networkEngine.send(msg);
+        } else {
+          this.networkEngine.broadcast(msg);
+        }
+      }
+    }
   }
 
   private notifyPeerListeners() {

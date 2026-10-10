@@ -47,12 +47,23 @@ export class NativeNetworkEngineAdapter implements NetworkEngine {
   }
 
   async start(): Promise<Result<void>> {
-    await this.requestPermissions();
-    const initRes = await this.bridge.initialize(this.localNodeId || "node_" + Math.random().toString(36).substring(2,9));
+    const hasPerms = await this.requestPermissions();
+    if (!hasPerms) {
+      return { ok: false, error: { code: "PERMISSION_DENIED", message: "Required Android permissions were denied. Cannot start mesh networking.", retryable: false, module: "NETWORK" } };
+    }
+    const initRes = await this.bridge.initialize();
+      if (initRes.ok && initRes.data) {
+        this.localNodeId = initRes.data;
+      }
     if (!initRes.ok) {
       return initRes;
     }
     return this.bridge.startNetworking();
+  }
+
+  async connect(address: string): Promise<Result<void>> {
+    if ((this.bridge as any).connect) return (this.bridge as any).connect(address);
+    return { ok: true, data: undefined };
   }
 
   async stop(): Promise<Result<void>> {
@@ -75,18 +86,6 @@ export class NativeNetworkEngineAdapter implements NetworkEngine {
     } catch (e: any) {
       return { ok: false, error: { code: 'UNAVAILABLE', message: e.message, retryable: true, module: 'NETWORK' } };
     }
-  }
-
-  async connect(_peerId: string): Promise<Result<void>> {
-    return {
-      ok: false,
-      error: {
-        code: "UNSUPPORTED",
-        message: "Peer socket connections are managed automatically by AndroidNetworkEngine",
-        retryable: false,
-        module: "NETWORK",
-      },
-    };
   }
 
   async disconnect(_peerId: string): Promise<Result<void>> {

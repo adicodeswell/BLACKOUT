@@ -1,9 +1,11 @@
+declare var global: any;
 import { NativeModules, NativeEventEmitter } from 'react-native';
 import { NativeBridgeAdapter } from '../../src/adapters/native/NativeBridgeAdapter';
 import type { MessageDto } from '../../src/contracts/network/MessageDto';
 
+const mockRnListeners: Record<string, Function[]> = {};
+
 jest.mock('react-native', () => {
-  global.__rnListeners = {};
   return {
     NativeModules: {
       BlackoutNativeModule: {
@@ -13,13 +15,13 @@ jest.mock('react-native', () => {
     Platform: { OS: 'android' },
     NativeEventEmitter: class {
       addListener(event: string, callback: Function) {
-        if (!global.__rnListeners[event]) global.__rnListeners[event] = [];
-        global.__rnListeners[event].push(callback);
-        return { remove: () => { global.__rnListeners[event] = global.__rnListeners[event].filter(cb => cb !== callback); } };
+        if (!mockRnListeners[event]) mockRnListeners[event] = [];
+        mockRnListeners[event].push(callback);
+        return { remove: () => { mockRnListeners[event] = mockRnListeners[event].filter((cb: any) => cb !== callback); } };
       }
       emit(event: string, ...args: any[]) {
-        if (global.__rnListeners[event]) {
-          global.__rnListeners[event].forEach(cb => cb(...args));
+        if (mockRnListeners[event]) {
+          mockRnListeners[event].forEach((cb: any) => cb(...args));
         }
       }
     },
@@ -31,7 +33,7 @@ describe('NativeBridgeAdapter Event Simulation', () => {
   let eventEmitter: any;
 
   beforeEach(() => {
-    global.__rnListeners = {};
+    Object.keys(mockRnListeners).forEach(k => delete mockRnListeners[k]);
     adapter = new NativeBridgeAdapter();
     // Re-instantiate NativeEventEmitter to clear listeners
     eventEmitter = new NativeEventEmitter(NativeModules.BlackoutNativeModule as any);
@@ -58,9 +60,9 @@ describe('NativeBridgeAdapter Event Simulation', () => {
 
     adapter.subscribe((event) => {
       expect(event.type).toBe('NETWORK');
-      expect(event.event?.type).toBe('MESSAGE_RECEIVED');
-      if (event.event?.type === 'MESSAGE_RECEIVED') {
-        expect(event.event.message.message_id).toBe("test-id");
+      expect((event as any).event?.type).toBe('MESSAGE_RECEIVED');
+      if ((event as any).event?.type === 'MESSAGE_RECEIVED') {
+        expect((event as any).event.message.message_id).toBe("test-id");
       }
       done();
     });
@@ -75,9 +77,9 @@ describe('NativeBridgeAdapter Event Simulation', () => {
   it('should handle PEER_DISCONNECTED events correctly', (done) => {
     adapter.subscribe((event) => {
       expect(event.type).toBe('NETWORK');
-      expect(event.event?.type).toBe('PEER_DISCONNECTED');
-      if (event.event?.type === 'PEER_DISCONNECTED') {
-        expect(event.event.peer_id).toBe("dropped_peer");
+      expect((event as any).event?.type).toBe('PEER_DISCONNECTED');
+      if ((event as any).event?.type === 'PEER_DISCONNECTED') {
+        expect((event as any).event.peer_id).toBe("dropped_peer");
       }
       done();
     });
@@ -92,25 +94,28 @@ describe('NativeBridgeAdapter Event Simulation', () => {
     const listener = jest.fn();
     adapter.subscribe(listener);
 
+    const mockPeer = { peer_id: 'new_peer', transport: 'WIFI_DIRECT', connection_state: 'CONNECTED', last_seen_at: 0, capabilities: [] };
+    const mockPeer2 = { peer_id: 'new_peer_2', transport: 'WIFI_DIRECT', connection_state: 'DISCOVERED', last_seen_at: 0, capabilities: [] };
+
     // Simulate Native event
     eventEmitter.emit('NativeEvent', {
       type: 'PEER_CONNECTED',
-      peer_id: "new_peer"
+      peer: mockPeer
     });
 
     eventEmitter.emit('NativeEvent', {
       type: 'PEER_DISCOVERED',
-      peer_id: "new_peer_2"
+      peer: mockPeer2
     });
 
     expect(listener).toHaveBeenCalledTimes(2);
     expect(listener).toHaveBeenNthCalledWith(1, {
       type: 'NETWORK',
-      event: { type: 'PEER_CONNECTED', peer_id: 'new_peer' }
+      event: { type: 'PEER_CONNECTED', peer: mockPeer }
     });
     expect(listener).toHaveBeenNthCalledWith(2, {
       type: 'NETWORK',
-      event: { type: 'PEER_DISCOVERED', peer_id: 'new_peer_2' }
+      event: { type: 'PEER_DISCOVERED', peer: mockPeer2 }
     });
   });
 });
