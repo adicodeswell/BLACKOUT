@@ -26,6 +26,11 @@ public class FakeNetworkMessageDao implements NetworkMessageDao {
     }
 
     @Override
+    public List<NetworkMessageEntity> getAllMessages() {
+        return new ArrayList<>(store.values());
+    }
+
+    @Override
     public void updateDeliveryState(String id, String state, long time) {
         NetworkMessageEntity e = store.get(id);
         if (e != null) {

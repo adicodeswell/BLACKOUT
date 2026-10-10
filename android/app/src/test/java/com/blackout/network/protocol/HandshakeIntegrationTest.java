@@ -50,7 +50,7 @@ public class HandshakeIntegrationTest {
         CountDownLatch appMessageLatch = new CountDownLatch(1);
 
         // 1. Setup Server Side logic
-        HandshakeManager serverHandshakeManager = new HandshakeManager(SERVER_DEVICE_ID);
+        HandshakeManager serverHandshakeManager = new HandshakeManager(SERVER_DEVICE_ID, serverConnManager);
         
         MessageHandler serverMessageHandler = new MessageHandler(serverConnManager, serverHandshakeManager, new MessageHandler.AppMessageListener() {
             @Override
@@ -59,6 +59,8 @@ public class HandshakeIntegrationTest {
                     appMessageLatch.countDown();
                 }
             }
+            @Override
+            public void onPeerDisconnected(String peerId) {}
         });
 
         server = new NetworkServer(TEST_PORT, socket -> {
@@ -70,8 +72,13 @@ public class HandshakeIntegrationTest {
         Thread.sleep(100);
 
         // 2. Setup Client Side logic
-        HandshakeManager clientHandshakeManager = new HandshakeManager(CLIENT_DEVICE_ID);
-        MessageHandler clientMessageHandler = new MessageHandler(clientConnManager, clientHandshakeManager, message -> {});
+        HandshakeManager clientHandshakeManager = new HandshakeManager(CLIENT_DEVICE_ID, clientConnManager);
+        MessageHandler clientMessageHandler = new MessageHandler(clientConnManager, clientHandshakeManager, new MessageHandler.AppMessageListener() {
+            @Override
+            public void onApplicationMessage(NetworkMessage message) {}
+            @Override
+            public void onPeerDisconnected(String peerId) {}
+        });
 
         Socket clientSocket = new Socket("127.0.0.1", TEST_PORT);
         clientConnection = new PeerConnection(SERVER_DEVICE_ID, clientSocket, clientMessageHandler);
