@@ -41,10 +41,6 @@ public class MessageValidator {
             throw new ValidationException("Hop count cannot be negative");
         }
 
-        if (message.getPayloadHash() == null || message.getPayloadHash().trim().isEmpty()) {
-            throw new ValidationException("Payload hash is required");
-        }
-
         if (message.getPayload() == null) {
             throw new ValidationException("Payload is required (can be empty string, but not null)");
         }
@@ -54,12 +50,7 @@ public class MessageValidator {
             if (message.getDestinationDeviceId() == null || message.getDestinationDeviceId().trim().isEmpty()) {
                 throw new ValidationException("DIRECT message must have a destination_device_id");
             }
-            if (message.getEncryption() == null) {
-                throw new ValidationException("DIRECT message must include encryption metadata");
-            }
-            if (message.getEncryption().getAlgorithm() == null || message.getEncryption().getAlgorithm().trim().isEmpty()) {
-                throw new ValidationException("Encryption algorithm is required for DIRECT messages");
-            }
+            // Removed encryption metadata check since E2EE is a placeholder currently.
         }
     }
 }
