@@ -198,7 +198,7 @@ export class PeopleService {
       priority: "NORMAL",
       payload_hash: simpleHash(messageText),
       payload: { text: messageText },
-      signature: "sig_local_dev", // TODO: Implement actual signing
+      signature: "", // Security placeholder removed
     };
 
     // Store locally in conversation immediately
@@ -208,10 +208,16 @@ export class PeopleService {
     // Save to DataEngine if present
     if (this.dataEngine) {
       try {
-        await this.dataEngine.saveMessage(messageDto);
+        const dbResult = await this.dataEngine.saveMessage(messageDto);
+        if (!dbResult.ok) {
+          (messageDto as any)._local_delivery_state = 'FAILED';
+          this.notifyMessageListeners(targetPeerId, messageDto);
+          return { ok: false, error: dbResult.error };
+        }
       } catch (err) {
-        console.error(err);
-        // Safe fallback
+        (messageDto as any)._local_delivery_state = 'FAILED';
+        this.notifyMessageListeners(targetPeerId, messageDto);
+        return { ok: false, error: { code: "STORAGE", message: String(err), retryable: false, module: "DATA" } };
       }
     }
 

@@ -362,8 +362,34 @@ describe("Mesh Network Integration Tests (PeopleService & EmergencyReportService
   });
 
   it("should reject ACK sender mismatch", async () => {
-    // Already fixed in PeopleService and EmergencyReportService
-    expect(true).toBe(true);
+    // Send a message from B to a non-existent offline node so no real ACK is sent
+    const sendRes = await peopleB.sendDirectMessage("offline_node", "Hello Offline");
+    const msgId = (sendRes as any).data.message_id;
+
+    await delay(100);
+
+    // Simulate an ACK from a malicious/third-party node (Node C, let's use a fake ID)
+    netB.receiveRaw({
+      protocol_version: 1,
+      message_id: 'fake_ack_id',
+      message_type: 'ACK',
+      origin_device_id: 'node_c_malicious',
+      destination_device_id: netB.localNodeId,
+      payload: { ack_to: msgId, timestamp: Date.now() },
+      created_at: Date.now(),
+      ttl: 3,
+      hop_count: 0,
+      priority: "NORMAL",
+      payload_hash: "hash",
+      signature: "sig"
+    });
+
+    await delay(100);
+
+    // B should NOT have marked the message as DELIVERED because the ACK came from 'node_c_malicious' instead of A
+    const msg = await dataB.getMessage(msgId);
+    expect(msg.ok).toBe(true);
+    expect(((msg as any).data as any)._local_delivery_state).not.toBe('DELIVERED');
   });
 
   it("should not ACK if incoming message save fails", async () => {

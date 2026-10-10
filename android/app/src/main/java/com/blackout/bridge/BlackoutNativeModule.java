@@ -149,7 +149,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                         peerMap.putString("connection_state", "CONNECTING");
                         peerMap.putString("transport", "WIFI_DIRECT");
                         com.facebook.react.bridge.WritableMap event = com.facebook.react.bridge.Arguments.createMap();
-                        event.putString("type", "PEER_CONNECTED");
+                        event.putString("type", "PEER_DISCOVERED"); // Was prematurely emitting PEER_CONNECTED
                         event.putMap("peer", peerMap);
                         getReactApplicationContext()
                                 .getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class)

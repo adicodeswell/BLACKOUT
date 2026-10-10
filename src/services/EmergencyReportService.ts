@@ -54,9 +54,12 @@ export class EmergencyReportService {
           const ackTo = (msg.payload as any).ack_to;
           if (ackTo) {
              this.dataEngine.getMessage(ackTo).then((res) => {
-                // For broadcast reports, the origin checking might not perfectly apply, but if it was directed, we check.
-                if (res.ok && res.data && (!res.data.destination_device_id || res.data.destination_device_id === msg.origin_device_id)) {
-                  this.dataEngine.markDelivered(ackTo, Date.now()).catch(() => {});
+                if (res.ok && res.data) {
+                  // Only mark as DELIVERED if it's a DIRECT message and the ACK is from the intended recipient.
+                  // Broadcasts do not get a blanket "DELIVERED" state from a single arbitrary peer's ACK.
+                  if (res.data.destination_device_id && res.data.destination_device_id === msg.origin_device_id) {
+                    this.dataEngine.markDelivered(ackTo, Date.now()).catch(() => {});
+                  }
                 }
              });
           }

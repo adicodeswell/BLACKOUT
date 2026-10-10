@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { usePeers } from '../hooks/usePeers';
 import { NavIcon } from '../components/NavIcon';
@@ -49,7 +49,12 @@ export const PeersScreen: React.FC<PeersScreenProps> = ({
           {!isConnected && (
             <TouchableOpacity
               style={[styles.fillButton, { backgroundColor: theme.colors.severityMedium }]}
-              onPress={() => peopleService.connectToPeer(item.peer_id)}
+              onPress={async () => {
+                const res = await peopleService.connectToPeer(item.peer_id);
+                if (!res.ok) {
+                  Alert.alert('Connection Failed', res.error?.message || 'Unknown network error');
+                }
+              }}
               activeOpacity={0.8}
             >
               <Text style={styles.fillButtonText}>Connect</Text>
