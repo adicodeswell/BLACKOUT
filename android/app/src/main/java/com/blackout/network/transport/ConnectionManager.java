@@ -14,6 +14,7 @@ public class ConnectionManager {
 
     // Thread-safe map of Peer ID -> Active Connection
     private final ConcurrentHashMap<String, PeerConnection> connections = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> aliases = new ConcurrentHashMap<>();
 
     /**
      * Registers and starts a new peer connection.
@@ -49,6 +50,7 @@ public class ConnectionManager {
         connections.remove(oldId);
         conn.setPeerId(newId);
         connections.put(newId, conn);
+        aliases.put(oldId, newId);
         Log.i(TAG, "Renamed connection " + oldId + " to " + newId);
         return true;
     }
@@ -75,6 +77,7 @@ public class ConnectionManager {
      */
     public synchronized void removeConnection(String peerId) {
         PeerConnection connection = connections.remove(peerId);
+        aliases.values().removeIf(val -> val.equals(peerId));
         if (connection != null) {
             connection.disconnect();
             Log.i(TAG, "Removed and disconnected peer: " + peerId);
@@ -96,7 +99,11 @@ public class ConnectionManager {
     }
 
     public synchronized PeerConnection getConnection(String peerId) {
-        return connections.get(peerId);
+        PeerConnection conn = connections.get(peerId);
+        if (conn == null && aliases.containsKey(peerId)) {
+            return connections.get(aliases.get(peerId));
+        }
+        return conn;
     }
 
     /**

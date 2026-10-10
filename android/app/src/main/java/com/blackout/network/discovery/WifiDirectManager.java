@@ -138,6 +138,9 @@ public class WifiDirectManager {
             public void onFailure(int reason) {
                 Log.e(TAG, "Connect failed. Reason: " + reason);
                 currentState = State.DISCONNECTED;
+                if (discoveryCallback != null) {
+                    discoveryCallback.onConnectionStateChanged(deviceAddress, State.DISCONNECTED);
+                }
             }
         });
     }
@@ -161,6 +164,7 @@ public class WifiDirectManager {
                                 // We are client, connect to GO
                                 new Thread(() -> {
                                     int maxRetries = 5;
+                                    boolean success = false;
                                     for (int i = 0; i < maxRetries; i++) {
                                         try {
                                             Log.i(TAG, "Attempt " + (i+1) + " to connect to GO...");
@@ -170,10 +174,17 @@ public class WifiDirectManager {
                                             if (connectionCallback != null) {
                                                 connectionCallback.onClientConnectedToGroupOwner(socket);
                                             }
+                                            success = true;
                                             break;
                                         } catch (Exception e) {
                                             Log.e(TAG, "Socket connection failed", e);
                                             try { Thread.sleep(2000); } catch (Exception ignored) {}
+                                        }
+                                    }
+                                    if (!success) {
+                                        currentState = State.DISCONNECTED;
+                                        if (discoveryCallback != null) {
+                                            discoveryCallback.onConnectionStateChanged(info.groupOwnerAddress.getHostAddress(), State.DISCONNECTED);
                                         }
                                     }
                                 }).start();

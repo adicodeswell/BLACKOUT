@@ -266,10 +266,18 @@ export class PeopleService {
     if (pendingRes.ok && pendingRes.data.length > 0) {
       for (const msg of pendingRes.data) {
         // Attempt to resend
+        let sendRes;
         if (msg.message_type === "DIRECT" && msg.destination_device_id) {
-          this.networkEngine.send(msg);
+          sendRes = await this.networkEngine.send(msg);
         } else {
-          this.networkEngine.broadcast(msg);
+          sendRes = await this.networkEngine.broadcast(msg);
+        }
+        
+        if (sendRes && sendRes.ok) {
+          (msg as any)._local_delivery_state = 'SENT';
+          if (msg.destination_device_id) {
+            this.notifyMessageListeners(msg.destination_device_id, msg);
+          }
         }
       }
     }
