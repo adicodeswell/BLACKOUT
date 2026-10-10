@@ -38,9 +38,6 @@ public class RoomDataEngine {
     }
 
     public void saveMessage(NetworkMessage message) {
-        if (message.getMessageType() == MessageType.DIRECT && message.getEncryption() == null) {
-            throw new IllegalArgumentException("DIRECT messages must be encrypted before saving.");
-        }
         messageRepository.saveMessage(message);
     }
 
