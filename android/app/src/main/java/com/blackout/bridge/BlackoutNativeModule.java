@@ -56,6 +56,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     public void initialize(String ignoredNodeId, Promise promise) {
         try {
             if (networkEngine != null) {
+                WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
+                if (wdm != null) wdm.discoverPeers();
                 DeviceIdentity identity = new DeviceIdentity(getReactApplicationContext());
                 promise.resolve(identity.getDeviceId());
                 return;
@@ -145,6 +147,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             }
 
             if (networkEngine != null) {
+                WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
+                if (wdm != null) wdm.discoverPeers();
                 networkEngine.start();
             }
             promise.resolve(null);
@@ -157,6 +161,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     public void stopNetworking(Promise promise) {
         try {
             if (networkEngine != null) {
+                WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
+                if (wdm != null) wdm.discoverPeers();
                 networkEngine.stop();
             }
             promise.resolve(null);
@@ -219,6 +225,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
         try {
             WritableArray peersArray = Arguments.createArray();
             if (networkEngine != null) {
+                WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
+                if (wdm != null) wdm.discoverPeers();
                 // Get Wi-Fi Direct discovered peers
                 List<WifiP2pDevice> wifiPeers = networkEngine.getWifiPeers();
                 for (WifiP2pDevice device : wifiPeers) {
@@ -272,6 +280,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     public void discoverPeers(Promise promise) {
         try {
             if (networkEngine != null) {
+                WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
+                if (wdm != null) wdm.discoverPeers();
                 promise.resolve(null);
             } else {
                 promise.reject("ENGINE_NOT_READY", "Initialize the engine first");

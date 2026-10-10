@@ -62,7 +62,7 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
   };
 
   const renderMessageItem = ({ item }: { item: MessageDto }) => {
-    const isOutgoing = item.origin_device_id === 'self-node-01' || item.destination_device_id === peerId;
+    const isOutgoing = item.destination_device_id === peerId;
     const content = getMessageContent(item);
     const timeStr = new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 

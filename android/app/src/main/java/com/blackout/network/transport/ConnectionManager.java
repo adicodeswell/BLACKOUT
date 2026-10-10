@@ -21,6 +21,13 @@ public class ConnectionManager {
         public void updateConnectionId(String oldId, String newId) {
         PeerConnection conn = connections.remove(oldId);
         if (conn != null) {
+            if (connections.containsKey(newId)) {
+                Log.w(TAG, "Replacing existing connection during rename for peer: " + newId);
+                PeerConnection old = connections.remove(newId);
+                if (old != null) {
+                    old.disconnect();
+                }
+            }
             conn.setPeerId(newId);
             connections.put(newId, conn);
             Log.i(TAG, "Renamed connection " + oldId + " to " + newId);
@@ -76,7 +83,13 @@ public class ConnectionManager {
      * Returns a snapshot list of all currently connected Peer IDs.
      */
     public List<String> getActivePeerIds() {
-        return new ArrayList<>(connections.keySet());
+        List<String> activeIds = new ArrayList<>();
+        for (String id : connections.keySet()) {
+            if (!id.startsWith("TEMP-")) {
+                activeIds.add(id);
+            }
+        }
+        return activeIds;
     }
 
     /**

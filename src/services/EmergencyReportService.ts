@@ -110,7 +110,9 @@ export class EmergencyReportService {
     const finalReportRequest: CreateReportRequest = {
       ...submission.request,
       location: capturedLocation ?? submission.request.location,
-    };
+      reporter_device_id: (this.networkEngine as any).localNodeId || "unknown-node",
+      created_at: Date.now()
+    } as any;
 
     // 2. Local persistence in DataEngine (Primary local-first step)
     const reportResult = await this.dataEngine.createReport(finalReportRequest);

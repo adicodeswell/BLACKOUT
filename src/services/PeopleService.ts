@@ -49,8 +49,18 @@ export class PeopleService {
       const msg = event.message;
       if (msg.message_type === "ACK" && msg.payload) {
         const ackTo = (msg.payload as any).ack_to;
-        if (ackTo && this.dataEngine) {
-          this.dataEngine.markDelivered(ackTo, Date.now()).catch(() => {});
+        if (ackTo) {
+          if (this.dataEngine) {
+            this.dataEngine.markDelivered(ackTo, Date.now()).catch(() => {});
+          }
+          // Update in-memory state
+          this.conversations.forEach((list, peerId) => {
+            const m = list.find(x => x.message_id === ackTo);
+            if (m) {
+              (m as any)._local_delivery_state = 'DELIVERED';
+              this.notifyMessageListeners(peerId, m);
+            }
+          });
         }
       }
 
@@ -183,6 +193,7 @@ export class PeopleService {
     };
 
     // Store locally in conversation immediately
+    (messageDto as any)._local_delivery_state = 'QUEUED';
     this.addMessageToConversation(targetPeerId, messageDto);
 
     // Save to DataEngine if present
@@ -198,12 +209,16 @@ export class PeopleService {
     // Broadcast / send via NetworkEngine
     const sendRes = await this.networkEngine.send(messageDto);
     if (!sendRes.ok) {
+      (messageDto as any)._local_delivery_state = 'FAILED';
+      this.notifyMessageListeners(targetPeerId, messageDto);
       return {
         ok: false,
         error: sendRes.error,
       };
     }
 
+    (messageDto as any)._local_delivery_state = 'SENT';
+    this.notifyMessageListeners(targetPeerId, messageDto);
     return { ok: true, data: messageDto };
   }
 

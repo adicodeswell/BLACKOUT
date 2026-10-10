@@ -59,7 +59,7 @@ export class RoomDataEngineAdapter implements DataEngine {
         description: request.description,
         location: request.location,
         evidence_ids: request.evidence_ids || [],
-        reporter_device_id: (request as any).reporter_device_id || "self-node-01",
+        reporter_device_id: (request as any).reporter_device_id || "unknown-node",
         report_id: (request as any).report_id,
         created_at: (request as any).created_at,
       };
