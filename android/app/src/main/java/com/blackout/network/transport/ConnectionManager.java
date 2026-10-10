@@ -91,7 +91,7 @@ public class ConnectionManager {
         if (peerId == null || peerId.startsWith("TEMP-")) {
             return null;
         }
-        PeerConnection conn = connections.get(peerId);
+        PeerConnection conn = getConnection(peerId);
         if (conn != null && conn.isReady()) {
             return conn;
         }

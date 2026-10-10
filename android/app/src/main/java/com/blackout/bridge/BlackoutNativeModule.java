@@ -41,6 +41,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     private AndroidNetworkEngine networkEngine;
     private OutgoingSendManager outgoingSendManager;
     private ConnectionManager connectionManager;
+    private String localDeviceId;
+    private com.blackout.network.reliability.ForwardingEngine forwardingEngine;
 
     public BlackoutNativeModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -65,9 +67,14 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             
             ReactApplicationContext ctx = getReactApplicationContext();
             DeviceIdentity identity = new DeviceIdentity(ctx);
+            localDeviceId = identity.getDeviceId();
             connectionManager = new ConnectionManager();
             outgoingSendManager = new OutgoingSendManager(connectionManager);
-            HandshakeManager handshakeManager = new HandshakeManager(identity.getDeviceId(), connectionManager, new HandshakeManager.HandshakeListener() {
+            
+            com.blackout.network.reliability.MessageDeduplicator deduplicator = new com.blackout.network.reliability.MessageDeduplicator();
+            forwardingEngine = new com.blackout.network.reliability.ForwardingEngine(localDeviceId, outgoingSendManager, deduplicator);
+
+            HandshakeManager handshakeManager = new HandshakeManager(localDeviceId, connectionManager, new HandshakeManager.HandshakeListener() {
                 @Override
                 public void onHandshakeComplete(String peerId) {
                     WritableMap event = com.facebook.react.bridge.Arguments.createMap();
@@ -82,7 +89,14 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             MessageHandler messageHandler = new MessageHandler(connectionManager, handshakeManager, new MessageHandler.AppMessageListener() {
                 @Override
                 public void onApplicationMessage(NetworkMessage message) {
-                    emitMessageToJS(message);
+                    if (forwardingEngine != null && forwardingEngine.shouldForward(message)) {
+                        forwardingEngine.forwardMessage(message);
+                    }
+                    
+                    String dest = message.getDestinationDeviceId();
+                    if (dest == null || dest.isEmpty() || dest.equals(localDeviceId)) {
+                        emitMessageToJS(message);
+                    }
                 }
                 @Override
                 public void onPeerDisconnected(String peerId) {
@@ -226,8 +240,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             if (msg.getDestinationDeviceId() != null && !msg.getDestinationDeviceId().isEmpty()) {
                 boolean success = outgoingSendManager.sendDirect(msg, msg.getDestinationDeviceId());
                 if (!success) {
-                    promise.reject("NO_CONNECTION", "No active connection to the specified peer");
-                    return;
+                    android.util.Log.i("BlackoutNativeModule", "No direct connection for " + msg.getDestinationDeviceId() + ". Falling back to mesh broadcast for store-and-forward routing.");
+                    outgoingSendManager.broadcast(msg);
                 }
             } else {
                 outgoingSendManager.broadcast(msg);
