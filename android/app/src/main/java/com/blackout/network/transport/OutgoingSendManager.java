@@ -35,12 +35,13 @@ public class OutgoingSendManager {
         }
     }
 
-    public void broadcast(NetworkMessage msg) {
+    public boolean broadcast(NetworkMessage msg) {
         try {
             byte[] bytes = MessageSerializer.serialize(msg);
-            connectionManager.broadcast(bytes);
+            return connectionManager.broadcast(bytes);
         } catch (JSONException e) {
             Log.e(TAG, "Failed to serialize broadcast message", e);
+            return false;
         }
     }
 }

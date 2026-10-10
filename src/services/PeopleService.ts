@@ -43,7 +43,10 @@ export class PeopleService {
 
   private handleNetworkEvent(event: NetworkEvent) {
     if (event.type === "PEER_CONNECTED") {
+      this.refreshPeers();
       this.flushQueue();
+    } else if (event.type === "PEER_DISCONNECTED") {
+      this.refreshPeers();
     }
     if (event.type === "MESSAGE_RECEIVED") {
       const msg = event.message;
@@ -177,12 +180,14 @@ export class PeopleService {
     if (!messageText) {
       return {
         ok: false,
-        error: {
-          code: "VALIDATION",
-          message: "Message text cannot be empty",
-          retryable: false,
-          module: "NETWORK",
-        },
+        error: { code: "VALIDATION", message: "Message text cannot be empty", retryable: false, module: "NETWORK" },
+      };
+    }
+    
+    if (targetPeerId.includes(":") || targetPeerId.startsWith("TEMP-")) {
+      return {
+        ok: false,
+        error: { code: "UNRESOLVED_IDENTITY", message: "Cannot send to an unresolved or temporary peer identity. Please wait for the connection to fully establish.", retryable: false, module: "NETWORK" },
       };
     }
 

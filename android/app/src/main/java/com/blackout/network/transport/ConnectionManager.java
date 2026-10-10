@@ -43,6 +43,7 @@ public class ConnectionManager {
             } else {
                 Log.w(TAG, "Collision: replacing existing connection deterministically.");
                 connections.remove(newId);
+                aliases.values().removeIf(val -> val.equals(newId));
                 existing.disconnect();
             }
         }
@@ -62,6 +63,7 @@ public class ConnectionManager {
         if (connections.containsKey(peerId)) {
             Log.w(TAG, "Replacing existing connection for peer: " + peerId);
             PeerConnection old = connections.remove(peerId);
+            aliases.values().removeIf(val -> val.equals(peerId));
             if (old != null) {
                 old.disconnect();
             }
@@ -110,10 +112,12 @@ public class ConnectionManager {
      * Broadcasts a framed byte payload to ALL currently connected peers.
      * Useful for mesh store-and-forward.
      */
-    public synchronized void broadcast(byte[] payload) {
+    public synchronized boolean broadcast(byte[] payload) {
+        if (connections.isEmpty()) return false;
         for (PeerConnection conn : connections.values()) {
             conn.send(payload);
         }
+        return true;
     }
     
     /**

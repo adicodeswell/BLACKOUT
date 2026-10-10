@@ -237,14 +237,21 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             
             // Wait, MessageSerializer expects snake_case for field names. 
             // In a real production app, we'd ensure React Native sends the snake_case keys correctly.
+            boolean sent = false;
             if (msg.getDestinationDeviceId() != null && !msg.getDestinationDeviceId().isEmpty()) {
                 boolean success = outgoingSendManager.sendDirect(msg, msg.getDestinationDeviceId());
                 if (!success) {
-                    android.util.Log.i("BlackoutNativeModule", "No direct connection for " + msg.getDestinationDeviceId() + ". Falling back to mesh broadcast for store-and-forward routing.");
-                    outgoingSendManager.broadcast(msg);
+                    promise.reject("NO_CONNECTION", "No active connection to the specified peer");
+                    return;
                 }
+                sent = true;
             } else {
-                outgoingSendManager.broadcast(msg);
+                sent = outgoingSendManager.broadcast(msg);
+            }
+            
+            if (!sent) {
+                promise.reject("NO_CONNECTION", "No active connections in mesh. Message queued offline.");
+                return;
             }
             
             WritableMap result = Arguments.createMap();

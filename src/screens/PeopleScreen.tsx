@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   RefreshControl,
   TextInput,
-  Modal
+  Modal,
+  Alert
 } from 'react-native';
 import { NavIcon } from '../components/NavIcon';
 import RNFS from 'react-native-fs';
@@ -135,7 +136,14 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
     return (
       <TouchableOpacity
         style={[styles.peerCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
-        onPress={() => onStartChat(item.peer_id)}
+        onPress={() => {
+          if (item.connection_state === 'DISCOVERED') {
+            Alert.alert("Connecting", "Connecting to peer. Please wait...");
+            peopleService.connectToPeer(item.peer_id);
+          } else if (item.connection_state === 'CONNECTED' || item.connection_state === 'READY') {
+            onStartChat(item.peer_id);
+          }
+        }}
         activeOpacity={0.7}
       >
         <View style={[styles.avatarCircle, { backgroundColor: theme.colors.surfaceElevated }]}>
