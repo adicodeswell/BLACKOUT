@@ -93,12 +93,17 @@ describe('PeopleService', () => {
     }
   });
 
-  test('sendDirectMessage fails for unresolved IDs', async () => {
+  test('sendDirectMessage sends or queues messages for discovered or pending transport IDs', async () => {
     const res1 = await service.sendDirectMessage('mac:address', 'Hello');
-    expect(res1.ok).toBe(false);
+    expect(res1.ok).toBe(true);
 
+    // If network engine fails to send, state remains QUEUED
+    mockNetworkEngine.send.mockResolvedValueOnce({ ok: false, error: { code: 'UNAVAILABLE', message: 'offline', retryable: true, module: 'NETWORK' } });
     const res2 = await service.sendDirectMessage('TEMP-1234', 'Hello');
-    expect(res2.ok).toBe(false);
+    expect(res2.ok).toBe(true);
+    if (res2.ok) {
+      expect((res2.data as any)._local_delivery_state).toBe('QUEUED');
+    }
   });
 
   test('message delivery states are tracked correctly', async () => {

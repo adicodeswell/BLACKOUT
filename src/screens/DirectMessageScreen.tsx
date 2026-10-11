@@ -151,6 +151,14 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
         <View style={{ width: 60 }} />
       </View>
 
+      {(peerState === 'CONNECTING' || peerState === 'HANDSHAKING') && (
+        <View style={{ backgroundColor: theme.colors.surface, borderColor: '#FFA000', borderWidth: 1, padding: 8, marginHorizontal: 16, marginTop: 8, borderRadius: 8 }}>
+          <Text style={{ color: '#FFA000', fontSize: 12, textAlign: 'center' }}>
+            📡 Establishing direct link. If prompted on either phone, please tap 'Accept' or 'Connect' on the system dialog.
+          </Text>
+        </View>
+      )}
+
       {sendError && (
         <View style={[styles.errorBanner, { backgroundColor: theme.colors.background, borderColor: theme.colors.severityCritical }]}>
           <Text style={[styles.errorText, { color: theme.colors.severityCritical }]}>Send Failure: {sendError}</Text>

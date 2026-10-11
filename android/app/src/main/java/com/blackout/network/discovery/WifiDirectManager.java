@@ -71,9 +71,18 @@ public class WifiDirectManager {
     }
 
     private String localDeviceId;
+    private String thisDeviceAddress;
 
     public void setLocalDeviceId(String localDeviceId) {
         this.localDeviceId = localDeviceId;
+    }
+
+    public void setThisDeviceAddress(String thisDeviceAddress) {
+        this.thisDeviceAddress = thisDeviceAddress;
+    }
+
+    public String getThisDeviceAddress() {
+        return thisDeviceAddress;
     }
 
     private final WifiP2pManager.PeerListListener peerListListener = new WifiP2pManager.PeerListListener() {
@@ -89,10 +98,18 @@ public class WifiDirectManager {
             // Autonomous Background Connection:
             if (!peers.isEmpty() && currentState == State.DISCONNECTED) {
                 for (WifiP2pDevice candidate : peers) {
-                    if (candidate.status == WifiP2pDevice.AVAILABLE) {
-                        String local = localDeviceId != null ? localDeviceId : "";
-                        // Deterministic tie-breaker: device with higher ID initiates connection as Group Owner
-                        if (local.compareTo(candidate.deviceAddress) > 0) {
+                    if (candidate.status == WifiP2pDevice.AVAILABLE && candidate.deviceAddress != null) {
+                        boolean shouldInitiate = false;
+                        if (thisDeviceAddress != null) {
+                            // Symmetric deterministic tie-breaker: device with lexicographically greater MAC initiates
+                            shouldInitiate = thisDeviceAddress.compareTo(candidate.deviceAddress) > 0;
+                        } else if (localDeviceId != null) {
+                            // Fallback using deterministic hash
+                            int localHash = localDeviceId.hashCode();
+                            int candidateHash = candidate.deviceAddress.hashCode();
+                            shouldInitiate = localHash > candidateHash;
+                        }
+                        if (shouldInitiate) {
                             Log.i(TAG, "Autonomous Peering: Initiating connect to " + candidate.deviceAddress);
                             connectToAddress(candidate.deviceAddress);
                             break;
@@ -155,7 +172,7 @@ public class WifiDirectManager {
         WifiP2pConfig config = new WifiP2pConfig();
         config.deviceAddress = deviceAddress;
         config.wps.setup = WpsInfo.PBC;
-        config.groupOwnerIntent = 15; // Set highest intent to resolve Group Owner role decisively
+        config.groupOwnerIntent = 14; // Use 14 to resolve Group Owner cleanly without tie collision
         
         p2pManager.connect(channel, config, new WifiP2pManager.ActionListener() {
             @Override
@@ -182,7 +199,13 @@ public class WifiDirectManager {
             @Override
             public void onReceive(Context context, Intent intent) {
                 String action = intent.getAction();
-                if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION.equals(action)) {
+                if (WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION.equals(action)) {
+                    WifiP2pDevice thisDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE);
+                    if (thisDevice != null && thisDevice.deviceAddress != null) {
+                        thisDeviceAddress = thisDevice.deviceAddress;
+                        Log.i(TAG, "Discovered local Wi-Fi P2P device address: " + thisDeviceAddress);
+                    }
+                } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION.equals(action)) {
                     if (p2pManager != null && currentState != State.CONNECTING) {
                         p2pManager.requestPeers(channel, peerListListener);
                     }

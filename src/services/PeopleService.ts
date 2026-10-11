@@ -48,6 +48,34 @@ export class PeopleService {
     if (event.type === "PEER_CONNECTED" || event.type === "PEER_DISCOVERED") {
       const peer = (event as any).peer;
       const peerId = peer?.peer_id || (event as any).peer_id;
+      const transportAddr = peer?.transport_address;
+
+      // Migrate messages if conversation was previously keyed by transport address (e.g. MAC)
+      if (
+        peerId &&
+        !peerId.startsWith("TEMP-") &&
+        !peerId.includes(":") &&
+        transportAddr &&
+        this.conversations.has(transportAddr)
+      ) {
+        const oldMsgs = this.conversations.get(transportAddr) || [];
+        const canonicalMsgs = this.conversations.get(peerId) || [];
+        for (const m of oldMsgs) {
+          if (m.destination_device_id === transportAddr) {
+            m.destination_device_id = peerId;
+          }
+          if (m.origin_device_id === transportAddr) {
+            m.origin_device_id = peerId;
+          }
+          if (!canonicalMsgs.some(cm => cm.message_id === m.message_id)) {
+            canonicalMsgs.push(m);
+          }
+        }
+        canonicalMsgs.sort((a, b) => a.created_at - b.created_at);
+        this.conversations.set(peerId, canonicalMsgs);
+        this.conversations.delete(transportAddr);
+      }
+
       if (
         this.dataEngine?.saveContact &&
         peerId &&
@@ -349,18 +377,20 @@ export class PeopleService {
       };
     }
     
-    if (targetPeerId.includes(":") || targetPeerId.startsWith("TEMP-")) {
-      return {
-        ok: false,
-        error: { code: "VALIDATION", message: "Cannot send to an unresolved or temporary peer identity. Please wait for the connection to fully establish.", retryable: false, module: "NETWORK" },
-      };
+    // Resolve canonical peer ID from alias if known
+    let targetDest = targetPeerId;
+    const knownPeer = this.activePeers.find(
+      (p) => p.peer_id === targetPeerId || p.transport_address === targetPeerId
+    );
+    if (knownPeer && !knownPeer.peer_id.includes(":") && !knownPeer.peer_id.startsWith("TEMP-")) {
+      targetDest = knownPeer.peer_id;
     }
 
     const messageDto: MessageDto = {
       protocol_version: 1,
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       origin_device_id: this.localNodeId,
-      destination_device_id: targetPeerId,
+      destination_device_id: targetDest,
       message_type: "DIRECT",
       created_at: Date.now(),
       ttl: 15,
@@ -371,9 +401,12 @@ export class PeopleService {
       signature: "", // Security placeholder removed
     };
 
-    // Store locally in conversation immediately
+    // Store locally in conversation immediately as QUEUED
     (messageDto as any)._local_delivery_state = 'QUEUED';
     this.addMessageToConversation(targetPeerId, messageDto);
+    if (targetDest !== targetPeerId) {
+      this.addMessageToConversation(targetDest, messageDto);
+    }
 
     // Save to DataEngine if present
     if (this.dataEngine) {

@@ -72,7 +72,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             DeviceIdentity identity = new DeviceIdentity(ctx);
             localDeviceId = identity.getDeviceId();
             connectionManager = new ConnectionManager();
-            outgoingSendManager = new OutgoingSendManager(connectionManager);
+            com.blackout.network.reliability.MessageQueue messageQueue = new com.blackout.network.reliability.MessageQueue();
+            outgoingSendManager = new OutgoingSendManager(connectionManager, messageQueue);
             
             roomDataEngine = new com.blackout.data.RoomDataEngine(ctx.getApplicationContext());
             com.blackout.network.reliability.MessageDeduplicator deduplicator = new com.blackout.network.reliability.MessageDeduplicator();
@@ -86,6 +87,20 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             HandshakeManager handshakeManager = new HandshakeManager(localDeviceId, connectionManager, new HandshakeManager.HandshakeListener() {
                 @Override
                 public void onHandshakeComplete(String peerId) {
+                    // Flush pending offline direct messages and broadcasts
+                    try {
+                        java.util.List<NetworkMessage> queuedDirect = messageQueue.drainPendingDirect(peerId);
+                        for (NetworkMessage m : queuedDirect) {
+                            outgoingSendManager.sendDirect(m, peerId);
+                        }
+                        java.util.List<NetworkMessage> queuedBroadcasts = messageQueue.getPendingBroadcasts();
+                        for (NetworkMessage b : queuedBroadcasts) {
+                            outgoingSendManager.sendDirect(b, peerId);
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error draining offline message queue on handshake completion", e);
+                    }
+
                     WritableMap event = com.facebook.react.bridge.Arguments.createMap();
                     event.putString("type", "PEER_CONNECTED");
                     event.putString("peer_id", peerId);
@@ -170,8 +185,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                     event.putMap("peer", peerMap);
                     getReactApplicationContext().getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("NativeEvent", event);
                 } catch (Exception e) {}
-                handshakeManager.initiateHandshake(peer);
-
+                // Passive server socket: wait for inbound HELLO from client (asymmetric handshake)
             });
 
             // Inject hardware adapters

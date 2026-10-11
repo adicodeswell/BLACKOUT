@@ -22,7 +22,17 @@ export function useDirectMessage(
 
   const loadConversation = useCallback(() => {
     setIsLoading(true);
-    const history = peopleService.getConversation(peerId);
+    let history = peopleService.getConversation(peerId);
+    if (history.length === 0) {
+      const peers = (peopleService as any).activePeers || [];
+      const match = peers.find((p: any) => p.peer_id === peerId || p.transport_address === peerId);
+      if (match) {
+        const altId = match.peer_id === peerId ? match.transport_address : match.peer_id;
+        if (altId) {
+          history = peopleService.getConversation(altId);
+        }
+      }
+    }
     setMessages([...history]);
     setIsLoading(false);
   }, [peopleService, peerId]);
@@ -32,11 +42,11 @@ export function useDirectMessage(
   }, [loadConversation]);
 
   useEffect(() => {
-    const unsubscribe = peopleService.subscribeMessages(peerId, () => {
+    const unsubscribe = peopleService.subscribeMessages(undefined, () => {
       loadConversation();
     });
     return () => unsubscribe();
-  }, [peopleService, peerId, loadConversation]);
+  }, [peopleService, loadConversation]);
 
   const sendMessage = async (text: string): Promise<boolean> => {
     setIsSending(true);
