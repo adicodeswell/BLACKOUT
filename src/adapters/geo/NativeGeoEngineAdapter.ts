@@ -135,4 +135,39 @@ export class NativeGeoEngineAdapter implements GeoEngine {
       this.stopTracking().catch(() => {});
     };
   }
+
+  async updatePeerLocation(peerId: string, location: LocationDto): Promise<Result<void>> {
+    try {
+      if (BlackoutGeoModule?.updatePeerLocation) {
+        await BlackoutGeoModule.updatePeerLocation(peerId, location.latitude, location.longitude);
+      }
+      return { ok: true, data: undefined };
+    } catch (e: any) {
+      return { ok: false, error: { code: 'UNAVAILABLE', message: e.message, retryable: false, module: 'GEO' } };
+    }
+  }
+
+  async getPeerLocation(peerId: string): Promise<Result<LocationDto | null>> {
+    try {
+      if (BlackoutGeoModule?.getPeerLocation) {
+        const loc = await BlackoutGeoModule.getPeerLocation(peerId);
+        return { ok: true, data: loc as LocationDto | null };
+      }
+      return { ok: true, data: null };
+    } catch (e: any) {
+      return { ok: false, error: { code: 'UNAVAILABLE', message: e.message, retryable: false, module: 'GEO' } };
+    }
+  }
+
+  async filterCloserNeighbors(destinationPeerId: string, candidatePeerIds: string[]): Promise<Result<string[]>> {
+    try {
+      if (BlackoutGeoModule?.filterCloserNeighbors) {
+        const closer = await BlackoutGeoModule.filterCloserNeighbors(destinationPeerId, candidatePeerIds);
+        return { ok: true, data: closer as string[] };
+      }
+      return { ok: true, data: candidatePeerIds };
+    } catch (e: any) {
+      return { ok: false, error: { code: 'UNAVAILABLE', message: e.message, retryable: false, module: 'GEO' } };
+    }
+  }
 }

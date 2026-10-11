@@ -57,4 +57,18 @@ export interface GeoEngine {
     location: LocationDto,
     radiusM: number
   ): Promise<Result<NearbyItemDto[]>>;
+
+  updatePeerLocation?(
+    peerId: string,
+    location: LocationDto
+  ): Promise<Result<void>>;
+
+  getPeerLocation?(
+    peerId: string
+  ): Promise<Result<LocationDto | null>>;
+
+  filterCloserNeighbors?(
+    destinationPeerId: string,
+    candidatePeerIds: string[]
+  ): Promise<Result<string[]>>;
 }

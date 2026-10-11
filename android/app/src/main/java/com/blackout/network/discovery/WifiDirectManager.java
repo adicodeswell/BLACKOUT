@@ -70,15 +70,35 @@ public class WifiDirectManager {
         this.connectionCallback = callback;
     }
 
+    private String localDeviceId;
+
+    public void setLocalDeviceId(String localDeviceId) {
+        this.localDeviceId = localDeviceId;
+    }
+
     private final WifiP2pManager.PeerListListener peerListListener = new WifiP2pManager.PeerListListener() {
         @Override
         public void onPeersAvailable(WifiP2pDeviceList peerList) {
             peers.clear();
             peers.addAll(peerList.getDeviceList());
             Log.i(TAG, "Wi-Fi Direct Peers found: " + peers.size());
-            // No auto-connect anymore! Wait for manual connection from UI.
             if (discoveryCallback != null) {
                 discoveryCallback.onPeersDiscovered(peers);
+            }
+            
+            // Autonomous Background Connection:
+            if (!peers.isEmpty() && currentState == State.DISCONNECTED) {
+                for (WifiP2pDevice candidate : peers) {
+                    if (candidate.status == WifiP2pDevice.AVAILABLE) {
+                        String local = localDeviceId != null ? localDeviceId : "";
+                        // Deterministic tie-breaker: device with higher ID initiates connection as Group Owner
+                        if (local.compareTo(candidate.deviceAddress) > 0) {
+                            Log.i(TAG, "Autonomous Peering: Initiating connect to " + candidate.deviceAddress);
+                            connectToAddress(candidate.deviceAddress);
+                            break;
+                        }
+                    }
+                }
             }
         }
     };
@@ -112,10 +132,17 @@ public class WifiDirectManager {
         });
     }
 
+    private String lastConnectingAddress;
+
+    public String getLastConnectingAddress() {
+        return lastConnectingAddress;
+    }
+
     @SuppressLint("MissingPermission")
     public void connectToAddress(String deviceAddress) {
         if (p2pManager == null || channel == null) return;
         
+        this.lastConnectingAddress = deviceAddress;
         Log.i(TAG, "Connecting to address: " + deviceAddress);
         currentState = State.CONNECTING;
         if (discoveryCallback != null) {
@@ -128,6 +155,7 @@ public class WifiDirectManager {
         WifiP2pConfig config = new WifiP2pConfig();
         config.deviceAddress = deviceAddress;
         config.wps.setup = WpsInfo.PBC;
+        config.groupOwnerIntent = 15; // Set highest intent to resolve Group Owner role decisively
         
         p2pManager.connect(channel, config, new WifiP2pManager.ActionListener() {
             @Override
@@ -138,6 +166,9 @@ public class WifiDirectManager {
             public void onFailure(int reason) {
                 Log.e(TAG, "Connect failed. Reason: " + reason);
                 currentState = State.DISCONNECTED;
+                if (p2pManager != null && channel != null) {
+                    p2pManager.removeGroup(channel, null);
+                }
                 if (discoveryCallback != null) {
                     discoveryCallback.onConnectionStateChanged(deviceAddress, State.DISCONNECTED);
                 }
@@ -192,6 +223,9 @@ public class WifiDirectManager {
                         });
                     } else {
                         currentState = State.DISCONNECTED;
+                        if (p2pManager != null && channel != null) {
+                            p2pManager.removeGroup(channel, null);
+                        }
                     }
                 }
             }

@@ -28,7 +28,13 @@ public class BleDiscoveryEngine {
     // 128-bit UUID unique to BLACKOUT Mesh Network
     public static final ParcelUuid BLACKOUT_SERVICE_UUID = new ParcelUuid(UUID.fromString("B1A00000-0000-1000-8000-00805F9B34FB"));
 
+    public interface BleDiscoveryListener {
+        void onPeerDiscovered(String canonicalPeerId, String bleAddress, int rssi);
+    }
+
     private final BluetoothAdapter bluetoothAdapter;
+    private final String localDeviceId;
+    private BleDiscoveryListener discoveryListener;
     private BluetoothLeAdvertiser advertiser;
     private BluetoothLeScanner scanner;
     
@@ -50,14 +56,39 @@ public class BleDiscoveryEngine {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
             super.onScanResult(callbackType, result);
-            Log.i(TAG, "Found BLACKOUT peer via BLE: " + result.getDevice().getAddress());
-            // Triggers Wi-Fi Direct or GATT connection logic in a production scenario
+            handleScanResult(result);
         }
 
         @Override
         public void onBatchScanResults(List<ScanResult> results) {
             for (ScanResult result : results) {
-                Log.i(TAG, "Found BLACKOUT peer via BLE (Batch): " + result.getDevice().getAddress());
+                handleScanResult(result);
+            }
+        }
+
+        private void handleScanResult(ScanResult result) {
+            if (result == null || result.getScanRecord() == null) return;
+            String bleAddress = result.getDevice() != null ? result.getDevice().getAddress() : null;
+            byte[] serviceData = result.getScanRecord().getServiceData(BLACKOUT_SERVICE_UUID);
+            String canonicalPeerId = null;
+            if (serviceData != null) {
+                if (serviceData.length == 16) {
+                    try {
+                        java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap(serviceData);
+                        long high = bb.getLong();
+                        long low = bb.getLong();
+                        canonicalPeerId = new UUID(high, low).toString();
+                    } catch (Exception ignored) {}
+                } else {
+                    canonicalPeerId = new String(serviceData, java.nio.charset.StandardCharsets.UTF_8);
+                }
+            }
+            if (canonicalPeerId == null) {
+                canonicalPeerId = bleAddress;
+            }
+            Log.i(TAG, "Found BLACKOUT peer via BLE: " + canonicalPeerId + " (" + bleAddress + ")");
+            if (discoveryListener != null && canonicalPeerId != null) {
+                discoveryListener.onPeerDiscovered(canonicalPeerId, bleAddress, result.getRssi());
             }
         }
 
@@ -68,7 +99,16 @@ public class BleDiscoveryEngine {
     };
 
     public BleDiscoveryEngine(BluetoothAdapter adapter) {
+        this(adapter, null);
+    }
+
+    public BleDiscoveryEngine(BluetoothAdapter adapter, String localDeviceId) {
         this.bluetoothAdapter = adapter;
+        this.localDeviceId = localDeviceId;
+    }
+
+    public void setDiscoveryListener(BleDiscoveryListener listener) {
+        this.discoveryListener = listener;
     }
 
     @SuppressLint("MissingPermission")
@@ -94,10 +134,24 @@ public class BleDiscoveryEngine {
                     .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_LOW)
                     .build();
 
-            AdvertiseData data = new AdvertiseData.Builder()
+            AdvertiseData.Builder dataBuilder = new AdvertiseData.Builder()
                     .setIncludeDeviceName(false)
-                    .addServiceUuid(BLACKOUT_SERVICE_UUID)
-                    .build();
+                    .addServiceUuid(BLACKOUT_SERVICE_UUID);
+
+            if (localDeviceId != null && !localDeviceId.isEmpty()) {
+                try {
+                    UUID u = UUID.fromString(localDeviceId);
+                    java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap(new byte[16]);
+                    bb.putLong(u.getMostSignificantBits());
+                    bb.putLong(u.getLeastSignificantBits());
+                    dataBuilder.addServiceData(BLACKOUT_SERVICE_UUID, bb.array());
+                } catch (Exception e) {
+                    byte[] fallback = localDeviceId.substring(0, Math.min(16, localDeviceId.length())).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    dataBuilder.addServiceData(BLACKOUT_SERVICE_UUID, fallback);
+                }
+            }
+
+            AdvertiseData data = dataBuilder.build();
 
             advertiser.startAdvertising(settings, data, advertiseCallback);
 

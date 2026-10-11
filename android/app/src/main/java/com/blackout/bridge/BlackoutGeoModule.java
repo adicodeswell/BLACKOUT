@@ -22,20 +22,27 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class BlackoutGeoModule extends ReactContextBaseJavaModule {
 
     private static final String TAG = "BlackoutGeoModule";
+    private static volatile OfflineGeoEngine sharedGeoEngine;
     private OfflineGeoEngine geoEngine;
     private LocationManager locationManager;
     private Location lastKnownLocation;
     private boolean isTracking = false;
+
+    public static OfflineGeoEngine getSharedGeoEngine() {
+        return sharedGeoEngine;
+    }
 
     public BlackoutGeoModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -51,6 +58,7 @@ public class BlackoutGeoModule extends ReactContextBaseJavaModule {
                 public Runnable observe(com.blackout.geolocation.OfflineGeoEngine.LocationListener listener) { return () -> {}; }
             };
             geoEngine = new com.blackout.geolocation.OfflineGeoEngine(provider, new com.blackout.geolocation.LocationValidator(), new com.blackout.geolocation.OfflineMapManager(java.util.Collections.emptyList()));
+            sharedGeoEngine = geoEngine;
         } catch(Exception e) {}
     }
 
@@ -122,6 +130,7 @@ public class BlackoutGeoModule extends ReactContextBaseJavaModule {
             OfflineMapManager mapManager = new OfflineMapManager(java.util.Collections.emptyList());
 
             geoEngine = new OfflineGeoEngine(provider, validator, mapManager);
+            sharedGeoEngine = geoEngine;
 
             promise.resolve(null);
         } catch (Exception e) {
@@ -302,6 +311,57 @@ promise.reject("UNAVAILABLE", "Location not yet acquired (waiting for sensor loc
 
         } catch (Exception e) {
             promise.reject("CALC_ROUTE_ERROR", e);
+        }
+    }
+
+    @ReactMethod
+    public void updatePeerLocation(String peerId, double latitude, double longitude, Promise promise) {
+        try {
+            if (geoEngine != null) {
+                geoEngine.updatePeerLocation(peerId, latitude, longitude);
+            }
+            promise.resolve(null);
+        } catch (Exception e) {
+            promise.reject("UPDATE_PEER_LOC_ERROR", e);
+        }
+    }
+
+    @ReactMethod
+    public void getPeerLocation(String peerId, Promise promise) {
+        try {
+            if (geoEngine != null) {
+                GeoPoint pt = geoEngine.getPeerLocation(peerId);
+                if (pt != null) {
+                    WritableMap map = Arguments.createMap();
+                    map.putDouble("latitude", pt.getLatitude());
+                    map.putDouble("longitude", pt.getLongitude());
+                    promise.resolve(map);
+                    return;
+                }
+            }
+            promise.resolve(null);
+        } catch (Exception e) {
+            promise.reject("GET_PEER_LOC_ERROR", e);
+        }
+    }
+
+    @ReactMethod
+    public void filterCloserNeighbors(String destinationPeerId, ReadableArray candidatePeerIds, Promise promise) {
+        try {
+            WritableArray out = Arguments.createArray();
+            if (geoEngine != null && candidatePeerIds != null) {
+                List<String> candidates = new ArrayList<>();
+                for (int i = 0; i < candidatePeerIds.size(); i++) {
+                    candidates.add(candidatePeerIds.getString(i));
+                }
+                List<String> closer = geoEngine.filterCloserNeighbors(destinationPeerId, candidates);
+                for (String peerId : closer) {
+                    out.pushString(peerId);
+                }
+            }
+            promise.resolve(out);
+        } catch (Exception e) {
+            promise.reject("FILTER_PEERS_ERROR", e);
         }
     }
 

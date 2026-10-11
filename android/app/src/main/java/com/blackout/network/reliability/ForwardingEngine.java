@@ -2,8 +2,13 @@ package com.blackout.network.reliability;
 
 import android.util.Log;
 
+import com.blackout.geolocation.OfflineGeoEngine;
+import com.blackout.network.protocol.MessageType;
 import com.blackout.network.protocol.NetworkMessage;
 import com.blackout.network.transport.OutgoingSendManager;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Evaluates incoming messages to decide if we should forward them
@@ -15,6 +20,8 @@ public class ForwardingEngine {
     private final String localDeviceId;
     private final OutgoingSendManager sendManager;
     private final MessageDeduplicator deduplicator;
+    private com.blackout.data.RoomDataEngine dataEngine;
+    private OfflineGeoEngine geoEngine;
 
     public ForwardingEngine(String localDeviceId, OutgoingSendManager sendManager, MessageDeduplicator deduplicator) {
         this.localDeviceId = localDeviceId;
@@ -22,29 +29,55 @@ public class ForwardingEngine {
         this.deduplicator = deduplicator;
     }
 
+    public ForwardingEngine(String localDeviceId, OutgoingSendManager sendManager, MessageDeduplicator deduplicator, OfflineGeoEngine geoEngine) {
+        this.localDeviceId = localDeviceId;
+        this.sendManager = sendManager;
+        this.deduplicator = deduplicator;
+        this.geoEngine = geoEngine;
+    }
+
+    public void setGeoEngine(OfflineGeoEngine geoEngine) {
+        this.geoEngine = geoEngine;
+    }
+
+    public OfflineGeoEngine getGeoEngine() {
+        return this.geoEngine;
+    }
+
+    public void setDataEngine(com.blackout.data.RoomDataEngine dataEngine) {
+        this.dataEngine = dataEngine;
+    }
+
     /**
      * Determines if a message qualifies for store-and-forward.
      */
     public boolean shouldForward(NetworkMessage msg) {
+        if (msg == null) return false;
+
         // 1. Don't forward our own messages back out
-        if (msg.getOriginDeviceId().equals(localDeviceId)) return false;
+        if (msg.getOriginDeviceId() != null && msg.getOriginDeviceId().equals(localDeviceId)) return false;
         
         // 2. TTL (Time To Live) exceeded, drop it to prevent infinite loops
         if (msg.getHopCount() >= msg.getTtl()) {
-            Log.d(TAG, "Message TTL exceeded, dropping: " + msg.getMessageId());
+            Log.d(TAG, "Message TTL exceeded (" + msg.getHopCount() + "/" + msg.getTtl() + "), dropping: " + msg.getMessageId());
             return false;
         }
         
         // 3. If it was specifically for us, we don't need to forward it further
-        if (localDeviceId.equals(msg.getDestinationDeviceId())) return false;
+        if (localDeviceId != null && localDeviceId.equals(msg.getDestinationDeviceId())) return false;
 
         return true;
     }
 
-    /**
-     * Rebuilds the message with an incremented hop count and broadcasts it.
-     */
     public void forwardMessage(NetworkMessage msg) {
+        forwardMessage(msg, null);
+    }
+
+    /**
+     * Rebuilds the message with an incremented hop count and relays it via direct socket
+     * or split-horizon broadcast (excluding the node that sent it to us).
+     */
+    public void forwardMessage(NetworkMessage msg, String sourcePeerId) {
         if (!shouldForward(msg)) return;
 
         // Remember it so WE don't process it again if it bounces back
@@ -66,7 +99,60 @@ public class ForwardingEngine {
                 .signature(msg.getSignature())
                 .build();
 
-        Log.i(TAG, "Forwarding message: " + msg.getMessageId() + " (Hop " + forwardedMsg.getHopCount() + ")");
-        sendManager.broadcast(forwardedMsg);
+        Log.i(TAG, "Relaying multi-hop message: " + msg.getMessageId() + " (Hop " + forwardedMsg.getHopCount() + "/" + forwardedMsg.getTtl() + ")");
+
+        boolean sent = false;
+        if (forwardedMsg.getDestinationDeviceId() != null && !forwardedMsg.getDestinationDeviceId().isEmpty()) {
+            sent = sendManager.sendDirect(forwardedMsg, forwardedMsg.getDestinationDeviceId());
+        }
+
+        if (!sent) {
+            if (forwardedMsg.getMessageType() == MessageType.DIRECT) {
+                // GPSR Geographic Routing for DIRECT messages: prevent broadcast storms
+                if (geoEngine != null) {
+                    List<String> activeNeighbors = sendManager.getActivePeerIds();
+                    List<String> candidateNeighbors = new ArrayList<>();
+                    for (String neighbor : activeNeighbors) {
+                        if (sourcePeerId == null || !sourcePeerId.equals(neighbor)) {
+                            candidateNeighbors.add(neighbor);
+                        }
+                    }
+
+                    List<String> closerPeers = geoEngine.filterCloserNeighbors(
+                            forwardedMsg.getDestinationDeviceId(),
+                            candidateNeighbors
+                    );
+
+                    if (!closerPeers.isEmpty()) {
+                        Log.i(TAG, "GPSR: Relaying DIRECT message " + msg.getMessageId() +
+                                " to " + closerPeers.size() + " geographically closer peer(s): " + closerPeers);
+                        for (String closerPeerId : closerPeers) {
+                            if (sendManager.sendDirect(forwardedMsg, closerPeerId)) {
+                                sent = true;
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "GPSR: Suppressing blind broadcast for DIRECT message " + msg.getMessageId() +
+                                " (no neighbor is closer to destination than self). Preserving mesh bandwidth.");
+                        // Suppress blind broadcast to eliminate broadcast storms
+                    }
+                } else {
+                    // Fallback to split-horizon broadcast when geoEngine is not configured
+                    sent = sendManager.broadcastExcept(forwardedMsg, sourcePeerId);
+                }
+            } else {
+                // Non-DIRECT messages (REPORT, HAZARD, BROADCAST): full mesh saturation
+                sent = sendManager.broadcastExcept(forwardedMsg, sourcePeerId);
+            }
+        }
+
+        if (!sent && dataEngine != null) {
+            Log.i(TAG, "No other peers reachable to relay message " + msg.getMessageId() + ". Storing as DTN courier.");
+            try {
+                dataEngine.saveMessage(forwardedMsg);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to cache courier message in Room DB", e);
+            }
+        }
     }
 }

@@ -108,12 +108,19 @@ export class NativeNetworkEngineAdapter implements NetworkEngine {
     return this.bridge.sendMessage(message);
   }
 
-  async getDeliveryStatus(_messageId: string): Promise<Result<DeliveryStatus>> {
+  async getDeliveryStatus(messageId: string): Promise<Result<DeliveryStatus>> {
+    const res = await this.bridge.getDeliveryStatus(messageId);
+    if (res.ok && res.data) {
+      return { ok: true, data: res.data };
+    }
+    if (!res.ok) {
+      return { ok: false, error: res.error };
+    }
     return {
       ok: false,
       error: {
-        code: "UNSUPPORTED",
-        message: "Delivery status querying is not currently exposed by native bridge",
+        code: "NOT_FOUND",
+        message: `Delivery status for message ${messageId} not found`,
         retryable: false,
         module: "NETWORK",
       },

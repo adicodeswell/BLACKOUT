@@ -33,7 +33,36 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
     peerId
   );
   const [inputText, setInputText] = useState('');
+  const [peerState, setPeerState] = useState<'DISCOVERED' | 'CONNECTING' | 'HANDSHAKING' | 'CONNECTED' | 'LOST' | 'OFFLINE'>('OFFLINE');
+  const [peerName, setPeerName] = useState<string | undefined>(undefined);
   const flatListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    const unsubscribe = peopleService.subscribePeers((peers) => {
+      const match = peers.find(
+        (p) => p.peer_id === peerId || p.transport_address === peerId
+      );
+      if (match) {
+        setPeerState(match.connection_state);
+        if (match.name) setPeerName(match.name);
+      } else {
+        setPeerState('OFFLINE');
+      }
+    });
+    return unsubscribe;
+  }, [peopleService, peerId]);
+
+  const getStatusColor = () => {
+    if (peerState === 'CONNECTED') return theme.colors.confidenceConfirmed;
+    if (peerState === 'CONNECTING' || peerState === 'HANDSHAKING') return '#FFA000';
+    return theme.colors.textSecondary;
+  };
+
+  const getStatusLabel = () => {
+    if (peerState === 'CONNECTED') return 'Direct P2P Session';
+    if (peerState === 'CONNECTING' || peerState === 'HANDSHAKING') return 'Connecting P2P Link...';
+    return 'Mesh Queued (Relay)';
+  };
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -87,7 +116,7 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
               {timeStr}
             </Text>
             {isOutgoing && (
-              <Text style={[styles.statusTag, { color: item._local_delivery_state === 'DELIVERED' ? '#4CAF50' : item._local_delivery_state === 'FAILED' ? '#FF5252' : 'rgba(255,255,255,0.7)' }]}>
+              <Text style={[styles.statusTag, { color: item._local_delivery_state === 'DELIVERED' ? '#4CAF50' : item._local_delivery_state === 'QUEUED' ? '#FFD54F' : item._local_delivery_state === 'FAILED' ? '#FF5252' : 'rgba(255,255,255,0.85)' }]}>
                 {item._local_delivery_state === 'DELIVERED' ? '✓✓ Delivered' : item._local_delivery_state === 'QUEUED' ? '⏳ Queued' : item._local_delivery_state === 'FAILED' ? '❌ Failed' : '✓ Sent'}
               </Text>
             )}
@@ -111,11 +140,11 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
 
         <View style={styles.headerTitleContainer}>
           <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-            {peerId}
+            {peerName || (peerId && peerId.length > 16 ? `User #${peerId.slice(-4).toUpperCase()}` : peerId)}
           </Text>
           <View style={styles.headerSubRow}>
-            <Text style={{ color: theme.colors.confidenceConfirmed, fontSize: 8, marginRight: 4 }}>●</Text>
-            <Text style={[styles.headerSubText, { color: theme.colors.textSecondary }]}>Direct P2P Session</Text>
+            <Text style={{ color: getStatusColor(), fontSize: 8, marginRight: 4 }}>●</Text>
+            <Text style={[styles.headerSubText, { color: theme.colors.textSecondary }]}>{getStatusLabel()}</Text>
           </View>
         </View>
 
@@ -141,7 +170,7 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
             </View>
             <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>Direct P2P Channel Open</Text>
             <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
-              No messages exchanged with <Text style={{ fontWeight: '700' }}>{peerId}</Text> yet. Send a direct mesh packet below.
+              No messages exchanged with <Text style={{ fontWeight: '700' }}>{peerId && peerId.length > 16 ? `User #${peerId.slice(-4).toUpperCase()}` : peerId}</Text> yet. Send a direct mesh packet below.
             </Text>
           </View>
         </View>
@@ -167,7 +196,7 @@ export const DirectMessageScreen: React.FC<DirectMessageScreenProps> = ({
               borderColor: theme.colors.surfaceBorder,
             },
           ]}
-          placeholder={`Message ${peerId}...`}
+          placeholder={`Message ${peerId && peerId.length > 16 ? `User #${peerId.slice(-4).toUpperCase()}` : peerId}...`}
           placeholderTextColor={theme.colors.textSecondary}
           value={inputText}
           onChangeText={setInputText}

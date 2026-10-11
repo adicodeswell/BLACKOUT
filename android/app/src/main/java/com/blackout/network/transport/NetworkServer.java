@@ -28,10 +28,19 @@ public class NetworkServer {
         this.listener = listener;
     }
 
+    public int getPort() {
+        if (serverSocket != null && serverSocket.isBound()) {
+            return serverSocket.getLocalPort();
+        }
+        return port;
+    }
+
     public synchronized void start() throws IOException {
         if (isRunning) return;
         
-        serverSocket = new ServerSocket(port);
+        serverSocket = new ServerSocket();
+        serverSocket.setReuseAddress(true);
+        serverSocket.bind(new java.net.InetSocketAddress(port));
         isRunning = true;
 
         acceptThread = new Thread(() -> {

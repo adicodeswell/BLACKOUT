@@ -74,6 +74,9 @@ export class EmergencyReportService {
             if (!existing.ok) {
                 await this.dataEngine.createReport(reportPayload);
             }
+            if (reportPayload.location && msg.origin_device_id && this.geoEngine.updatePeerLocation) {
+              this.geoEngine.updatePeerLocation(msg.origin_device_id, reportPayload.location).catch(() => {});
+            }
             
             // Preserve TTL and hop_count for storage
             const savedMsg = { ...msg, ttl: Math.max(0, msg.ttl - 1), hop_count: msg.hop_count + 1 };
@@ -88,7 +91,7 @@ export class EmergencyReportService {
                   destination_device_id: msg.origin_device_id,
                   message_type: "ACK",
                   created_at: Date.now(),
-                  ttl: 1,
+                  ttl: msg.ttl > 0 ? msg.ttl : 15,
                   hop_count: 0,
                   priority: "NORMAL",
                   payload_hash: "",
@@ -99,6 +102,29 @@ export class EmergencyReportService {
             }
           } catch (e) {
             console.error('Failed to save incoming mesh report', e);
+          }
+        }
+
+        if (msg.message_type === 'SYNC' && msg.payload) {
+          try {
+            const syncPayload = msg.payload as any;
+            const messages = Array.isArray(syncPayload.sync_messages) ? syncPayload.sync_messages : [syncPayload];
+            for (const item of messages) {
+              if (item.message_type === 'REPORT' && item.payload) {
+                const reportPayload = item.payload;
+                const reportId = reportPayload.report_id || item.message_id;
+                const existing = await this.dataEngine.getIncident(reportId);
+                if (!existing.ok) {
+                  await this.dataEngine.createReport(reportPayload);
+                }
+                if (reportPayload.location && item.origin_device_id && this.geoEngine.updatePeerLocation) {
+                  this.geoEngine.updatePeerLocation(item.origin_device_id, reportPayload.location).catch(() => {});
+                }
+                await this.dataEngine.saveMessage(item);
+              }
+            }
+          } catch (e) {
+            console.error('Failed to process incoming SYNC report', e);
           }
         }
       }
@@ -142,6 +168,12 @@ export class EmergencyReportService {
     }
 
     const localReport = reportResult.data;
+    if (capturedLocation && this.geoEngine.updatePeerLocation) {
+      const selfId = (this.networkEngine as any).localNodeId || localReport.reporter_device_id;
+      if (selfId) {
+        this.geoEngine.updatePeerLocation(selfId, capturedLocation).catch(() => {});
+      }
+    }
     let deliveryHandle: DeliveryHandle | undefined = undefined;
     let broadcastAttempted = false;
     let networkError: BlackoutError | undefined = undefined;
@@ -154,7 +186,7 @@ export class EmergencyReportService {
         origin_device_id: localReport.reporter_device_id,
         message_type: "REPORT",
         created_at: localReport.created_at,
-        ttl: 8, // Standard initial TTL for emergency report broadcasts
+        ttl: 25, // Saturation initial TTL for emergency report broadcasts (issue1.md)
         hop_count: 0,
         priority: mapSeverityToPriority(localReport.severity),
         payload_hash: "", // Payload hash calculation performed by message serializer/signer

@@ -62,4 +62,5 @@ export interface DeliveryStatus {
 export interface DeliveryHandle {
   message_id: string;
   accepted_at: number;
+  status?: "SENT" | "QUEUED";
 }

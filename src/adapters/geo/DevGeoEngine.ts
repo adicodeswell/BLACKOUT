@@ -174,4 +174,37 @@ export class DevGeoEngine implements GeoEngine {
 
     return { ok: true, data: [] };
   }
+
+  private peerLocations: Map<string, LocationDto> = new Map();
+
+  async updatePeerLocation(peerId: string, location: LocationDto): Promise<Result<void>> {
+    this.peerLocations.set(peerId, location);
+    return { ok: true, data: undefined };
+  }
+
+  async getPeerLocation(peerId: string): Promise<Result<LocationDto | null>> {
+    return { ok: true, data: this.peerLocations.get(peerId) ?? null };
+  }
+
+  async filterCloserNeighbors(destinationPeerId: string, candidatePeerIds: string[]): Promise<Result<string[]>> {
+    const destLoc = this.peerLocations.get(destinationPeerId);
+    if (!destLoc) {
+      return { ok: true, data: [] };
+    }
+    const selfDistRes = await this.calculateDistance(this.currentLocation, destLoc);
+    if (!selfDistRes.ok) return { ok: true, data: [] };
+    const selfDist = selfDistRes.data;
+
+    const closer: string[] = [];
+    for (const peerId of candidatePeerIds) {
+      const peerLoc = this.peerLocations.get(peerId);
+      if (peerLoc) {
+        const peerDistRes = await this.calculateDistance(peerLoc, destLoc);
+        if (peerDistRes.ok && peerDistRes.data < selfDist) {
+          closer.push(peerId);
+        }
+      }
+    }
+    return { ok: true, data: closer };
+  }
 }

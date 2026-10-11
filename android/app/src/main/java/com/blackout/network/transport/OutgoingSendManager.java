@@ -5,6 +5,8 @@ import com.blackout.network.protocol.MessageSerializer;
 import com.blackout.network.protocol.NetworkMessage;
 import org.json.JSONException;
 
+import java.util.List;
+
 /**
  * Handles outgoing message routing. Uses the ConnectionManager to 
  * find the right socket to send messages out over the mesh.
@@ -43,5 +45,19 @@ public class OutgoingSendManager {
             Log.e(TAG, "Failed to serialize broadcast message", e);
             return false;
         }
+    }
+
+    public boolean broadcastExcept(NetworkMessage msg, String excludedPeerId) {
+        try {
+            byte[] bytes = MessageSerializer.serialize(msg);
+            return connectionManager.broadcastExcept(bytes, excludedPeerId);
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to serialize broadcastExcept message", e);
+            return false;
+        }
+    }
+
+    public List<String> getActivePeerIds() {
+        return connectionManager.getActivePeerIds();
     }
 }

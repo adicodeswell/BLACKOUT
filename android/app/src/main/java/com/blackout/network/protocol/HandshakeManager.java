@@ -19,6 +19,7 @@ public class HandshakeManager {
     
     private final String localDeviceId;
     private final ConnectionManager connectionManager;
+    private com.blackout.network.reliability.AntiEntropyEngine antiEntropyEngine;
 
     public HandshakeManager(String localDeviceId, ConnectionManager connectionManager) {
         this.localDeviceId = localDeviceId;
@@ -30,6 +31,14 @@ public class HandshakeManager {
         this.localDeviceId = localDeviceId;
         this.connectionManager = connectionManager;
         this.listener = listener;
+    }
+
+    public void setAntiEntropyEngine(com.blackout.network.reliability.AntiEntropyEngine engine) {
+        this.antiEntropyEngine = engine;
+    }
+
+    public com.blackout.network.reliability.AntiEntropyEngine getAntiEntropyEngine() {
+        return this.antiEntropyEngine;
     }
 
     /**
@@ -114,6 +123,12 @@ public class HandshakeManager {
             case QUEUE_SUMMARY:
                 Log.i(TAG, "Handshake COMPLETE. Peer is fully READY: " + msg.getOriginDeviceId());
                 peer.setReady(true);
+                if (antiEntropyEngine != null) {
+                    java.util.List<NetworkMessage> deltas = antiEntropyEngine.generateSyncDelta(msg, msg.getOriginDeviceId());
+                    for (NetworkMessage delta : deltas) {
+                        sendToPeer(peer, delta);
+                    }
+                }
                 if (listener != null) listener.onHandshakeComplete(msg.getOriginDeviceId());
                 break;
                 
@@ -123,15 +138,22 @@ public class HandshakeManager {
     }
 
     private void sendQueueSummary(PeerConnection peer, String destId) {
-        NetworkMessage queueSummary = new NetworkMessage.Builder()
-                .protocolVersion(1)
-                .messageId(UUID.randomUUID().toString())
-                .originDeviceId(localDeviceId)
-                .destinationDeviceId(destId)
-                .messageType(MessageType.QUEUE_SUMMARY)
-                .payloadHash("none")
-                .payload("{\"known_messages\": []}") // Dummy empty queue for now
-                .build();
+        NetworkMessage queueSummary;
+        if (antiEntropyEngine != null) {
+            queueSummary = antiEntropyEngine.createQueueSummary(destId);
+        } else {
+            queueSummary = new NetworkMessage.Builder()
+                    .protocolVersion(1)
+                    .messageId(UUID.randomUUID().toString())
+                    .originDeviceId(localDeviceId)
+                    .destinationDeviceId(destId)
+                    .messageType(MessageType.QUEUE_SUMMARY)
+                    .ttl(2)
+                    .hopCount(0)
+                    .payloadHash("summary")
+                    .payload("{\"known_messages\": []}")
+                    .build();
+        }
         sendToPeer(peer, queueSummary);
         Log.i(TAG, "Sent QUEUE_SUMMARY to peer: " + destId);
     }

@@ -80,6 +80,18 @@ export class NativeBridgeAdapter {
     }
   }
 
+  async getDeliveryStatus(messageId: string): Promise<Result<import("../../contracts/network/MessageDto").DeliveryStatus | null>> {
+    try {
+      if (BlackoutNativeModule.getDeliveryStatus) {
+        const data = await BlackoutNativeModule.getDeliveryStatus(messageId);
+        return { ok: true, data: data };
+      }
+      return { ok: true, data: null };
+    } catch (error) {
+      return { ok: false, error: mapError(error) };
+    }
+  }
+
   subscribe(listener: (event: NativeBridgeEvent) => void): () => void {
     const subscription = eventEmitter.addListener('NativeEvent', (rawEvent: any) => {
       // Parse the JSON string payload emitted from Java
@@ -90,6 +102,14 @@ export class NativeBridgeAdapter {
           event: {
             type: 'MESSAGE_RECEIVED',
             message: parsedMessage,
+          }
+        });
+      } else if (rawEvent.type === 'MESSAGE_DELIVERY_UPDATED' && rawEvent.status) {
+        listener({
+          type: 'NETWORK',
+          event: {
+            type: 'MESSAGE_DELIVERY_UPDATED',
+            status: rawEvent.status,
           }
         });
       } else if (rawEvent.type === 'PEER_DISCONNECTED' && rawEvent.peer_id) {

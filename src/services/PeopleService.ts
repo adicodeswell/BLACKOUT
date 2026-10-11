@@ -4,6 +4,7 @@ import type { MessageDto } from "../contracts/network/MessageDto";
 import type { PeerDto } from "../contracts/network/PeerDto";
 import type { NetworkEvent } from "../contracts/network/NetworkEvents";
 import type { Result } from "../contracts/common/Result";
+import type { ContactDto } from "../contracts/data/ContactDto";
 
 function simpleHash(input: string): string {
   let hash = 0;
@@ -16,6 +17,7 @@ function simpleHash(input: string): string {
 
 export type MessageListener = (message: MessageDto) => void;
 export type PeerListener = (peers: PeerDto[]) => void;
+export type ContactListener = (contacts: ContactDto[]) => void;
 
 export class PeopleService {
   private _fallbackNodeId = "node_" + Math.random().toString(36).substring(2, 9);
@@ -27,6 +29,7 @@ export class PeopleService {
   private conversations: Map<string, MessageDto[]> = new Map();
   private messageListeners: Set<{ peerId?: string; listener: MessageListener }> = new Set();
   private peerListeners: Set<PeerListener> = new Set();
+  private contactListeners: Set<ContactListener> = new Set();
   private activePeers: PeerDto[] = [];
 
   constructor(networkEngine: NetworkEngine, dataEngine?: DataEngine) {
@@ -42,73 +45,183 @@ export class PeopleService {
   }
 
   private handleNetworkEvent(event: NetworkEvent) {
-    if (event.type === "PEER_CONNECTED") {
+    if (event.type === "PEER_CONNECTED" || event.type === "PEER_DISCOVERED") {
+      const peer = (event as any).peer;
+      const peerId = peer?.peer_id || (event as any).peer_id;
+      if (
+        this.dataEngine?.saveContact &&
+        peerId &&
+        !peerId.startsWith("TEMP-") &&
+        !peerId.includes(":")
+      ) {
+        this.dataEngine
+          .saveContact({
+            peer_id: peerId,
+            name:
+              peer?.name ||
+              `User #${
+                peerId.length > 4
+                  ? peerId.slice(-4).toUpperCase()
+                  : peerId
+              }`,
+            transport: peer?.transport === "BLE" ? "BLE" : "WIFI_DIRECT",
+            transport_address: peer?.transport_address,
+            last_seen_at: Date.now(),
+          })
+          .then(() => this.notifyContactListeners())
+          .catch(() => {});
+      }
       this.refreshPeers();
-      this.flushQueue();
+      if (event.type === "PEER_CONNECTED") {
+        this.flushQueue().catch(() => {});
+      }
     } else if (event.type === "PEER_DISCONNECTED") {
-      this.refreshPeers();
+      const peerId = (event as any).peer_id || (event as any).peer?.peer_id;
+      if (peerId) {
+        this.activePeers = this.activePeers.filter((p) => p.peer_id !== peerId);
+      }
+      this.notifyPeerListeners();
+    } else if (event.type === "MESSAGE_DELIVERY_UPDATED") {
+      const { message_id, state } = event.status;
+      if (state === "DELIVERED") {
+        if (this.dataEngine) {
+          this.dataEngine.markDelivered(message_id, event.status.updated_at || Date.now()).catch(() => {});
+        }
+        this.conversations.forEach((list, peerId) => {
+          const m = list.find(x => x.message_id === message_id);
+          if (m) {
+            (m as any)._local_delivery_state = 'DELIVERED';
+            this.notifyMessageListeners(peerId, m);
+          }
+        });
+      }
     }
+
     if (event.type === "MESSAGE_RECEIVED") {
       const msg = event.message;
       if (msg.message_type === "ACK" && msg.payload) {
         const ackTo = (msg.payload as any).ack_to;
-        if (ackTo && this.dataEngine) {
-          this.dataEngine.getMessage(ackTo).then((res) => {
-            if (res.ok && res.data && res.data.destination_device_id === msg.origin_device_id) {
-              this.dataEngine!.markDelivered(ackTo, Date.now()).catch(() => {});
-              // Update in-memory state
-              this.conversations.forEach((list, peerId) => {
-                const m = list.find(x => x.message_id === ackTo);
-                if (m) {
-                  (m as any)._local_delivery_state = 'DELIVERED';
-                  this.notifyMessageListeners(peerId, m);
-                }
-              });
+        if (ackTo) {
+          const verifyAndMark = (targetDest?: string) => {
+            if (targetDest && targetDest !== msg.origin_device_id) {
+              // Sender mismatch! ACK origin does not match original message destination.
+              return;
             }
-          });
+            if (this.dataEngine) {
+              this.dataEngine.markDelivered(ackTo, Date.now()).catch(() => {});
+            }
+            // Update in-memory state
+            this.conversations.forEach((list, peerId) => {
+              const m = list.find(x => x.message_id === ackTo);
+              if (m) {
+                (m as any)._local_delivery_state = 'DELIVERED';
+                this.notifyMessageListeners(peerId, m);
+              }
+            });
+          };
+
+          if (this.dataEngine) {
+            this.dataEngine.getMessage(ackTo).then((res) => {
+              if (res.ok && res.data) {
+                verifyAndMark(res.data.destination_device_id);
+              } else {
+                let foundDest: string | undefined;
+                this.conversations.forEach((list) => {
+                  const m = list.find(x => x.message_id === ackTo);
+                  if (m) foundDest = m.destination_device_id;
+                });
+                if (foundDest) {
+                  verifyAndMark(foundDest);
+                }
+              }
+            }).catch(() => {});
+          } else {
+            let foundDest: string | undefined;
+            this.conversations.forEach((list) => {
+              const m = list.find(x => x.message_id === ackTo);
+              if (m) foundDest = m.destination_device_id;
+            });
+            if (foundDest) {
+              verifyAndMark(foundDest);
+            }
+          }
         }
       }
 
       if (msg.message_type === "DIRECT" || msg.message_type === "BROADCAST") {
-        const peerId = msg.origin_device_id || "unknown-node";
-        
-        const processAndAck = () => {
-          this.addMessageToConversation(peerId, msg);
-          if (msg.message_type === "DIRECT" && msg.origin_device_id) {
-             const ackMsg: MessageDto = {
-               protocol_version: 1,
-               message_id: "ack_" + msg.message_id,
-               origin_device_id: this.localNodeId,
-               destination_device_id: msg.origin_device_id,
-               message_type: "ACK",
-               created_at: Date.now(),
-               ttl: 1, hop_count: 0, priority: "NORMAL",
-               payload_hash: "", payload: { ack_to: msg.message_id }, signature: ""
-             };
-             this.networkEngine.send(ackMsg);
-          }
-        };
-
-        if (this.dataEngine) {
-          this.dataEngine.saveMessage(msg).then((res) => {
-            if (res.ok) {
-              processAndAck();
-            } else {
-              // Persistence failed: do not ACK.
+        this.handleIncomingDirectOrBroadcast(msg);
+      } else if (msg.message_type === "SYNC" && msg.payload) {
+        try {
+          const syncPayload = msg.payload as any;
+          const items: MessageDto[] = Array.isArray(syncPayload.sync_messages) ? syncPayload.sync_messages : [syncPayload];
+          items.forEach(item => {
+            if (item && (item.message_type === "DIRECT" || item.message_type === "BROADCAST")) {
+              this.handleIncomingDirectOrBroadcast(item);
             }
-          }).catch(() => {
-            // Unexpected error: do not ACK.
-            return;
           });
-        } else {
-          processAndAck();
+        } catch (e) {
+          console.error("Failed to parse incoming SYNC messages in PeopleService", e);
         }
       }
-    } else if (event.type === "PEER_CONNECTED" || event.type === "PEER_DISCOVERED") {
-      this.refreshPeers();
-    } else if (event.type === "PEER_DISCONNECTED") {
-      this.activePeers = this.activePeers.filter((p) => p.peer_id !== event.peer_id);
-      this.notifyPeerListeners();
+    }
+  }
+
+  private handleIncomingDirectOrBroadcast(msg: MessageDto) {
+    const peerId = msg.origin_device_id || "unknown-node";
+    (msg as any)._local_delivery_state = 'RECEIVED';
+
+    if (
+      this.dataEngine?.saveContact &&
+      msg.origin_device_id &&
+      !msg.origin_device_id.startsWith("TEMP-") &&
+      !msg.origin_device_id.includes(":") &&
+      msg.origin_device_id !== this.localNodeId
+    ) {
+      this.dataEngine
+        .saveContact({
+          peer_id: msg.origin_device_id,
+          name: `User #${
+            msg.origin_device_id.length > 4
+              ? msg.origin_device_id.slice(-4).toUpperCase()
+              : msg.origin_device_id
+          }`,
+          transport: "WIFI_DIRECT",
+          last_seen_at: Date.now(),
+        })
+        .then(() => this.notifyContactListeners())
+        .catch(() => {});
+    }
+    
+    const processAndAck = () => {
+      this.addMessageToConversation(peerId, msg);
+      if (msg.message_type === "DIRECT" && msg.origin_device_id) {
+         const ackMsg: MessageDto = {
+           protocol_version: 1,
+           message_id: "ack_" + msg.message_id,
+           origin_device_id: this.localNodeId,
+           destination_device_id: msg.origin_device_id,
+           message_type: "ACK",
+           created_at: Date.now(),
+           ttl: msg.ttl > 0 ? msg.ttl : 15, hop_count: 0, priority: "NORMAL",
+           payload_hash: "", payload: { ack_to: msg.message_id }, signature: ""
+         };
+         this.networkEngine.send(ackMsg);
+      }
+    };
+
+    if (this.dataEngine) {
+      this.dataEngine.saveMessage(msg).then((res) => {
+        if (res.ok) {
+          processAndAck();
+        } else {
+          // Persistence failed: do not ACK.
+        }
+      }).catch(() => {
+        // Unexpected error: do not ACK.
+        return;
+      });
+    } else {
+      processAndAck();
     }
   }
 
@@ -117,10 +230,12 @@ export class PeopleService {
       const res = await this.dataEngine.getAllMessages();
       if (res.ok) {
         res.data.forEach(msg => {
+          if (msg.message_type !== "DIRECT" && msg.message_type !== "BROADCAST") return;
           const peerId = msg.origin_device_id === this.localNodeId ? msg.destination_device_id : msg.origin_device_id;
           if (peerId) this.addMessageToConversation(peerId, msg);
         });
       }
+      this.flushQueue().catch(() => {});
     }
   }
 
@@ -137,6 +252,12 @@ export class PeopleService {
   }
 
   async connectToPeer(address: string, onProgress?: (state: 'CONNECTING' | 'HANDSHAKING' | 'CONNECTED') => void): Promise<Result<string>> {
+    const existing = this.activePeers.find(p => p.peer_id === address || (p as any).transport_address === address);
+    if (existing && existing.connection_state === 'CONNECTED') {
+      onProgress?.('CONNECTED');
+      return { ok: true, data: existing.peer_id };
+    }
+
     onProgress?.('CONNECTING');
 
     return new Promise((resolve) => {
@@ -147,7 +268,7 @@ export class PeopleService {
         resolved = true;
         cleanup();
         resolve({ ok: false, error: { code: 'TIMEOUT', message: 'Connection timed out', retryable: true, module: 'NETWORK' }});
-      }, 15000);
+      }, 35000);
 
       const cleanup = this.networkEngine.subscribe((event) => {
         if (resolved) return;
@@ -167,6 +288,7 @@ export class PeopleService {
           clearTimeout(timeout);
           cleanup();
           onProgress?.('CONNECTED');
+          this.flushQueue().catch(() => {});
           resolve({ ok: true, data: event.peer.peer_id });
         }
       });
@@ -241,7 +363,7 @@ export class PeopleService {
       destination_device_id: targetPeerId,
       message_type: "DIRECT",
       created_at: Date.now(),
-      ttl: 3,
+      ttl: 15,
       hop_count: 0,
       priority: "NORMAL",
       payload_hash: simpleHash(messageText),
@@ -256,31 +378,47 @@ export class PeopleService {
     // Save to DataEngine if present
     if (this.dataEngine) {
       try {
-        const dbResult = await this.dataEngine.saveMessage(messageDto);
-        if (!dbResult.ok) {
-          (messageDto as any)._local_delivery_state = 'FAILED';
-          this.notifyMessageListeners(targetPeerId, messageDto);
-          return { ok: false, error: dbResult.error };
-        }
+        await this.dataEngine.saveMessage(messageDto);
       } catch (err) {
-        (messageDto as any)._local_delivery_state = 'FAILED';
-        this.notifyMessageListeners(targetPeerId, messageDto);
-        return { ok: false, error: { code: "STORAGE", message: String(err), retryable: false, module: "DATA" } };
+        console.warn('Failed to persist message to DataEngine', err);
+      }
+      if (this.dataEngine?.getContact) {
+        this.dataEngine.getContact(targetPeerId).then((cRes) => {
+          if (!cRes.ok || !cRes.data) {
+            this.dataEngine?.saveContact?.({
+              peer_id: targetPeerId,
+              name: `User #${targetPeerId.length > 4 ? targetPeerId.slice(-4).toUpperCase() : targetPeerId}`,
+              transport: "WIFI_DIRECT",
+              last_seen_at: Date.now(),
+            }).then(() => this.notifyContactListeners()).catch(() => {});
+          }
+        }).catch(() => {});
       }
     }
 
     // Broadcast / send via NetworkEngine
-    const sendRes = await this.networkEngine.send(messageDto);
-    if (!sendRes.ok) {
-      (messageDto as any)._local_delivery_state = 'FAILED';
-      this.notifyMessageListeners(targetPeerId, messageDto);
-      return {
-        ok: false,
-        error: sendRes.error,
-      };
+    try {
+      const sendRes = await this.networkEngine.send(messageDto);
+      if (sendRes.ok) {
+        const handle = sendRes.data as any;
+        const isSent = !handle?.status || handle.status === 'SENT';
+        if (isSent) {
+          if ((messageDto as any)._local_delivery_state !== 'DELIVERED') {
+            (messageDto as any)._local_delivery_state = 'SENT';
+          }
+          if (this.dataEngine && this.dataEngine.updateDeliveryState) {
+            await this.dataEngine.updateDeliveryState(messageDto.message_id, (messageDto as any)._local_delivery_state).catch(() => {});
+          }
+        } else {
+          (messageDto as any)._local_delivery_state = 'QUEUED';
+        }
+      } else {
+        (messageDto as any)._local_delivery_state = 'QUEUED';
+      }
+    } catch {
+      (messageDto as any)._local_delivery_state = 'QUEUED';
     }
 
-    (messageDto as any)._local_delivery_state = 'SENT';
     this.notifyMessageListeners(targetPeerId, messageDto);
     return { ok: true, data: messageDto };
   }
@@ -309,7 +447,7 @@ export class PeopleService {
     });
   }
 
-  private async flushQueue() {
+  public async flushQueue() {
     if (!this.dataEngine) return;
     const pendingRes = await this.dataEngine.getPendingOutbound();
     if (pendingRes.ok && pendingRes.data.length > 0) {
@@ -323,9 +461,27 @@ export class PeopleService {
         }
         
         if (sendRes && sendRes.ok) {
-          (msg as any)._local_delivery_state = 'SENT';
-          if (msg.destination_device_id) {
-            this.notifyMessageListeners(msg.destination_device_id, msg);
+          const handle = sendRes.data as any;
+          const isSent = !handle?.status || handle.status === 'SENT';
+          if (isSent) {
+            if ((msg as any)._local_delivery_state !== 'DELIVERED') {
+              (msg as any)._local_delivery_state = 'SENT';
+            }
+            if (this.dataEngine && this.dataEngine.updateDeliveryState) {
+              await this.dataEngine.updateDeliveryState(msg.message_id, (msg as any)._local_delivery_state).catch(() => {});
+            }
+            // Update in-memory state in conversations
+            const peerId = msg.destination_device_id || msg.origin_device_id;
+            if (peerId) {
+              const list = this.conversations.get(peerId);
+              if (list) {
+                const found = list.find((m) => m.message_id === msg.message_id);
+                if (found && (found as any)._local_delivery_state !== 'DELIVERED') {
+                  found._local_delivery_state = 'SENT';
+                }
+              }
+              this.notifyMessageListeners(peerId, msg);
+            }
           }
         }
       }
@@ -337,4 +493,70 @@ export class PeopleService {
       listener(this.activePeers);
     });
   }
+
+  async saveContact(contact: ContactDto): Promise<Result<void>> {
+    if (this.dataEngine) {
+      const res = await this.dataEngine.saveContact(contact);
+      this.notifyContactListeners();
+      return res;
+    }
+    return { ok: true, data: undefined };
+  }
+
+  async getContact(peerId: string): Promise<Result<ContactDto>> {
+    if (this.dataEngine) {
+      return this.dataEngine.getContact(peerId);
+    }
+    return {
+      ok: false,
+      error: { code: "NOT_FOUND", message: `Contact not found: ${peerId}`, retryable: false, module: "DATA" },
+    };
+  }
+
+  async getAllContacts(): Promise<Result<ContactDto[]>> {
+    if (this.dataEngine) {
+      return this.dataEngine.getAllContacts();
+    }
+    return { ok: true, data: [] };
+  }
+
+  async searchContacts(query: string): Promise<Result<ContactDto[]>> {
+    if (this.dataEngine && this.dataEngine.searchContacts) {
+      return this.dataEngine.searchContacts(query);
+    }
+    if (this.dataEngine) {
+      const res = await this.dataEngine.getAllContacts();
+      if (res.ok) {
+        const q = query.toLowerCase();
+        const filtered = res.data.filter((c) =>
+          c.peer_id.toLowerCase().includes(q) ||
+          c.name.toLowerCase().includes(q) ||
+          (c.custom_nickname && c.custom_nickname.toLowerCase().includes(q))
+        );
+        return { ok: true, data: filtered };
+      }
+    }
+    return { ok: true, data: [] };
+  }
+
+  subscribeContacts(listener: ContactListener): () => void {
+    this.contactListeners.add(listener);
+    this.getAllContacts()
+      .then((res) => {
+        if (res.ok) listener(res.data);
+      })
+      .catch(() => {});
+    return () => {
+      this.contactListeners.delete(listener);
+    };
+  }
+
+  private async notifyContactListeners() {
+    if (this.contactListeners.size === 0) return;
+    const res = await this.getAllContacts();
+    if (res.ok) {
+      this.contactListeners.forEach((listener) => listener(res.data));
+    }
+  }
 }
+

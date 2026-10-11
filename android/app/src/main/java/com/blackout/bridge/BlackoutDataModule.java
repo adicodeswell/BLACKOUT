@@ -65,10 +65,26 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void getRecentMessageIds(Promise promise) {
+        try {
+            java.util.List<String> list = dataEngine.getRecentMessageIds();
+            com.facebook.react.bridge.WritableArray arr = com.facebook.react.bridge.Arguments.createArray();
+            for (String id : list) {
+                arr.pushString(id);
+            }
+            promise.resolve(arr);
+        } catch (Exception e) {
+            promise.reject("GET_RECENT_IDS_ERROR", e);
+        }
+    }
+
+    @ReactMethod
     public void saveMessage(String messageJson, Promise promise) {
         try {
             NetworkMessage msg = MessageSerializer.deserialize(messageJson.getBytes(StandardCharsets.UTF_8));
-            dataEngine.saveMessage(msg);
+            org.json.JSONObject obj = new org.json.JSONObject(messageJson);
+            String deliveryState = obj.optString("_local_delivery_state", obj.optString("deliveryState", "QUEUED"));
+            dataEngine.saveMessage(msg, deliveryState);
             promise.resolve(true);
         } catch (Exception e) {
             Log.e(TAG, "Error in saveMessage", e);
@@ -116,6 +132,16 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
             promise.resolve(arr.toString());
         } catch (Exception e) {
             promise.reject("GET_PENDING_ERROR", e);
+        }
+    }
+
+    @ReactMethod
+    public void updateDeliveryState(String messageId, String state, Promise promise) {
+        try {
+            dataEngine.updateDeliveryState(messageId, state);
+            promise.resolve(null);
+        } catch (Exception e) {
+            promise.reject("UPDATE_DELIVERY_STATE_ERROR", e);
         }
     }
 
@@ -423,6 +449,88 @@ public class BlackoutDataModule extends ReactContextBaseJavaModule {
         if (res.expiresAt > 0) {
             obj.put("expires_at", res.expiresAt);
         }
+        return obj;
+    }
+
+    @ReactMethod
+    public void saveContact(String contactJson, Promise promise) {
+        try {
+            JSONObject obj = new JSONObject(contactJson);
+            ContactEntity contact = new ContactEntity();
+            contact.peerId = obj.getString("peer_id");
+            contact.name = obj.optString("name", "User #" + (contact.peerId.length() > 4 ? contact.peerId.substring(contact.peerId.length() - 4).toUpperCase() : contact.peerId));
+            contact.transport = obj.optString("transport", "WIFI_DIRECT");
+            if (obj.has("transport_address") && !obj.isNull("transport_address")) {
+                contact.transportAddress = obj.getString("transport_address");
+            }
+            contact.lastSeenAt = obj.optLong("last_seen_at", System.currentTimeMillis());
+            contact.isFavorite = obj.optBoolean("is_favorite", false);
+            if (obj.has("custom_nickname") && !obj.isNull("custom_nickname")) {
+                contact.customNickname = obj.getString("custom_nickname");
+            }
+            dataEngine.saveContact(contact);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error in saveContact", e);
+            promise.reject("SAVE_CONTACT_ERROR", e.getMessage(), e);
+        }
+    }
+
+    @ReactMethod
+    public void getContact(String peerId, Promise promise) {
+        try {
+            ContactEntity contact = dataEngine.getContact(peerId);
+            if (contact != null) {
+                JSONObject obj = serializeContact(contact);
+                promise.resolve(obj.toString());
+            } else {
+                promise.resolve(null);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in getContact", e);
+            promise.reject("GET_CONTACT_ERROR", e.getMessage(), e);
+        }
+    }
+
+    @ReactMethod
+    public void getAllContacts(Promise promise) {
+        try {
+            List<ContactEntity> list = dataEngine.getAllContacts();
+            JSONArray arr = new JSONArray();
+            for (ContactEntity c : list) {
+                arr.put(serializeContact(c));
+            }
+            promise.resolve(arr.toString());
+        } catch (Exception e) {
+            Log.e(TAG, "Error in getAllContacts", e);
+            promise.reject("GET_ALL_CONTACTS_ERROR", e.getMessage(), e);
+        }
+    }
+
+    @ReactMethod
+    public void searchContacts(String query, Promise promise) {
+        try {
+            List<ContactEntity> list = dataEngine.searchContacts(query);
+            JSONArray arr = new JSONArray();
+            for (ContactEntity c : list) {
+                arr.put(serializeContact(c));
+            }
+            promise.resolve(arr.toString());
+        } catch (Exception e) {
+            Log.e(TAG, "Error in searchContacts", e);
+            promise.reject("SEARCH_CONTACTS_ERROR", e.getMessage(), e);
+        }
+    }
+
+    private JSONObject serializeContact(ContactEntity c) throws Exception {
+        JSONObject obj = new JSONObject();
+        obj.put("peer_id", c.peerId);
+        obj.put("name", c.name);
+        obj.put("transport", c.transport);
+        if (c.transportAddress != null) obj.put("transport_address", c.transportAddress);
+        obj.put("last_seen_at", c.lastSeenAt);
+        obj.put("is_favorite", c.isFavorite);
+        if (c.customNickname != null) obj.put("custom_nickname", c.customNickname);
         return obj;
     }
 }

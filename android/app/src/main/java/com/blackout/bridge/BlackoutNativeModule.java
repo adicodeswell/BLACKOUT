@@ -14,6 +14,7 @@ import com.blackout.network.engine.DeviceIdentity;
 import com.blackout.network.protocol.HandshakeManager;
 import com.blackout.network.protocol.MessageHandler;
 import com.blackout.network.protocol.MessageSerializer;
+import com.blackout.network.protocol.MessageType;
 import com.blackout.network.protocol.NetworkMessage;
 import com.blackout.network.transport.ConnectionManager;
 import com.blackout.network.transport.NetworkServer;
@@ -44,6 +45,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     private ConnectionManager connectionManager;
     private String localDeviceId;
     private com.blackout.network.reliability.ForwardingEngine forwardingEngine;
+    private com.blackout.data.RoomDataEngine roomDataEngine;
 
     public BlackoutNativeModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -72,8 +74,14 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             connectionManager = new ConnectionManager();
             outgoingSendManager = new OutgoingSendManager(connectionManager);
             
+            roomDataEngine = new com.blackout.data.RoomDataEngine(ctx.getApplicationContext());
             com.blackout.network.reliability.MessageDeduplicator deduplicator = new com.blackout.network.reliability.MessageDeduplicator();
             forwardingEngine = new com.blackout.network.reliability.ForwardingEngine(localDeviceId, outgoingSendManager, deduplicator);
+            forwardingEngine.setDataEngine(roomDataEngine);
+            forwardingEngine.setGeoEngine(BlackoutGeoModule.getSharedGeoEngine());
+
+            com.blackout.network.reliability.AntiEntropyEngine antiEntropyEngine = 
+                new com.blackout.network.reliability.AntiEntropyEngine(localDeviceId, roomDataEngine);
 
             HandshakeManager handshakeManager = new HandshakeManager(localDeviceId, connectionManager, new HandshakeManager.HandshakeListener() {
                 @Override
@@ -86,17 +94,46 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                     } catch (Exception e) {}
                 }
             });
+            handshakeManager.setAntiEntropyEngine(antiEntropyEngine);
             
-            MessageHandler messageHandler = new MessageHandler(connectionManager, handshakeManager, new MessageHandler.AppMessageListener() {
+            MessageHandler messageHandler = new MessageHandler(connectionManager, handshakeManager, deduplicator, new MessageHandler.AppMessageListener() {
                 @Override
-                public void onApplicationMessage(NetworkMessage message) {
-                    if (forwardingEngine != null && forwardingEngine.shouldForward(message)) {
-                        forwardingEngine.forwardMessage(message);
-                    }
-                    
+                public void onApplicationMessage(String sourcePeerId, NetworkMessage message) {
+                    try {
+                        com.blackout.geolocation.OfflineGeoEngine geo = BlackoutGeoModule.getSharedGeoEngine();
+                        if (geo != null && message.getPayload() != null && message.getOriginDeviceId() != null) {
+                            org.json.JSONObject payloadObj = new org.json.JSONObject(message.getPayload());
+                            if (payloadObj.has("location")) {
+                                org.json.JSONObject locObj = payloadObj.optJSONObject("location");
+                                if (locObj != null && locObj.has("latitude") && locObj.has("longitude")) {
+                                    geo.updatePeerLocation(message.getOriginDeviceId(), locObj.optDouble("latitude"), locObj.optDouble("longitude"));
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
+
                     String dest = message.getDestinationDeviceId();
-                    if (dest == null || dest.isEmpty() || dest.equals(localDeviceId)) {
+                    if (dest == null || dest.isEmpty()) {
+                        // Broadcast / Hazard / Report: deliver to local UI and forward deeper into mesh
+                        if (roomDataEngine != null) {
+                            roomDataEngine.saveMessage(message, "RECEIVED");
+                        }
                         emitMessageToJS(message);
+                        if (forwardingEngine != null && forwardingEngine.shouldForward(message)) {
+                            forwardingEngine.forwardMessage(message, sourcePeerId);
+                        }
+                    } else if (dest.equals(localDeviceId)) {
+                        // Directed to this device: final hop reached
+                        if (message.getMessageType() == MessageType.ACK) {
+                            handleIncomingAck(message);
+                        } else {
+                            handleIncomingDirectMessage(message);
+                        }
+                    } else {
+                        // Directed to another peer: relay via multi-hop forwarding
+                        if (forwardingEngine != null && forwardingEngine.shouldForward(message)) {
+                            forwardingEngine.forwardMessage(message, sourcePeerId);
+                        }
                     }
                 }
                 @Override
@@ -111,11 +148,15 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                     } catch (Exception e) {}
                 }
             });
+            messageHandler.setAntiEntropyEngine(antiEntropyEngine);
             
             NetworkServer networkServer = new NetworkServer(18888, socket -> {
                 // Create a placeholder connection. HandshakeManager updates this later in Phase 7.
                 String tempId = "TEMP-" + java.util.UUID.randomUUID().toString().substring(0,8);
                 PeerConnection peer = new PeerConnection(tempId, socket, messageHandler);
+                if (socket.getInetAddress() != null) {
+                    peer.setTransportAddress(socket.getInetAddress().getHostAddress());
+                }
                 connectionManager.addConnection(peer);
                 
                 peer.start();
@@ -140,17 +181,66 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             WifiP2pManager wifiP2pManager = (WifiP2pManager) ctx.getSystemService(Context.WIFI_P2P_SERVICE);
             WifiP2pManager.Channel channel = wifiP2pManager != null ? wifiP2pManager.initialize(ctx, ctx.getMainLooper(), null) : null;
 
-            BleDiscoveryEngine bleEngine = new BleDiscoveryEngine(bluetoothAdapter);
+            BleDiscoveryEngine bleEngine = new BleDiscoveryEngine(bluetoothAdapter, localDeviceId);
+            bleEngine.setDiscoveryListener(new BleDiscoveryEngine.BleDiscoveryListener() {
+                @Override
+                public void onPeerDiscovered(String canonicalPeerId, String bleAddress, int rssi) {
+                    try {
+                        if (localDeviceId.equals(canonicalPeerId)) return;
+                        if (bleAddress != null) {
+                            connectionManager.registerAlias(bleAddress, canonicalPeerId);
+                        }
+                        if (roomDataEngine != null) {
+                            roomDataEngine.saveContact(new com.blackout.data.entity.ContactEntity(canonicalPeerId, "User #" + canonicalPeerId.substring(Math.max(0, canonicalPeerId.length() - 4)).toUpperCase(), "BLE", bleAddress, System.currentTimeMillis()));
+                        }
+                        com.facebook.react.bridge.WritableMap peerMap = com.facebook.react.bridge.Arguments.createMap();
+                        peerMap.putString("peer_id", canonicalPeerId);
+                        if (bleAddress != null) {
+                            peerMap.putString("transport_address", bleAddress);
+                        }
+                        peerMap.putString("name", "User #" + canonicalPeerId.substring(Math.max(0, canonicalPeerId.length() - 4)).toUpperCase());
+                        peerMap.putString("connection_state", "DISCOVERED");
+                        peerMap.putInt("signal_strength", Math.max(0, Math.min(100, (rssi + 100) * 2)));
+                        peerMap.putDouble("last_seen_at", System.currentTimeMillis());
+                        peerMap.putString("transport", "BLE");
+
+                        com.facebook.react.bridge.WritableMap event = com.facebook.react.bridge.Arguments.createMap();
+                        event.putString("type", "PEER_DISCOVERED");
+                        event.putMap("peer", peerMap);
+
+                        getReactApplicationContext()
+                                .getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                                .emit("NativeEvent", event);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to emit BLE PEER_DISCOVERED", e);
+                    }
+                }
+            });
+
             WifiDirectManager wifiManager = new WifiDirectManager(wifiP2pManager, channel, ctx);
+            wifiManager.setLocalDeviceId(localDeviceId);
             wifiManager.setDiscoveryCallback(new WifiDirectManager.DiscoveryCallback() {
                 @Override
                 public void onPeersDiscovered(List<android.net.wifi.p2p.WifiP2pDevice> peers) {
                     try {
                         for (android.net.wifi.p2p.WifiP2pDevice device : peers) {
                             if (device.status == android.net.wifi.p2p.WifiP2pDevice.CONNECTED) continue;
+                            String canonicalId = connectionManager != null ? connectionManager.resolveCanonicalId(device.deviceAddress) : device.deviceAddress;
+                            boolean hasCanonical = !canonicalId.equals(device.deviceAddress);
+
+                            String friendlyName = device.deviceName;
+                            if (friendlyName == null || friendlyName.isEmpty() || friendlyName.equals(device.deviceAddress)) {
+                                friendlyName = "Node " + (hasCanonical ? canonicalId.substring(Math.max(0, canonicalId.length() - 4)).toUpperCase() : device.deviceAddress.substring(Math.max(0, device.deviceAddress.length() - 5)));
+                            }
+
+                            if (roomDataEngine != null) {
+                                roomDataEngine.saveContact(new com.blackout.data.entity.ContactEntity(canonicalId, friendlyName, "WIFI_DIRECT", device.deviceAddress, System.currentTimeMillis()));
+                            }
+
                             com.facebook.react.bridge.WritableMap peerMap = com.facebook.react.bridge.Arguments.createMap();
-                            peerMap.putString("peer_id", device.deviceAddress);
-                            peerMap.putString("name", device.deviceName);
+                            peerMap.putString("peer_id", canonicalId);
+                            peerMap.putString("transport_address", device.deviceAddress);
+                            peerMap.putString("name", friendlyName);
                             peerMap.putString("connection_state", "DISCOVERED");
                             peerMap.putInt("signal_strength", 80);
                             peerMap.putDouble("last_seen_at", System.currentTimeMillis());
@@ -171,8 +261,10 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                 @Override
                 public void onConnectionStateChanged(String deviceAddress, com.blackout.network.discovery.WifiDirectManager.State state) {
                     if (state == com.blackout.network.discovery.WifiDirectManager.State.CONNECTING) {
+                        String canonicalId = connectionManager != null ? connectionManager.resolveCanonicalId(deviceAddress) : deviceAddress;
                         com.facebook.react.bridge.WritableMap peerMap = com.facebook.react.bridge.Arguments.createMap();
-                        peerMap.putString("peer_id", deviceAddress);
+                        peerMap.putString("peer_id", canonicalId);
+                        peerMap.putString("transport_address", deviceAddress);
                         peerMap.putString("connection_state", "CONNECTING");
                         peerMap.putString("transport", "WIFI_DIRECT");
                         com.facebook.react.bridge.WritableMap event = com.facebook.react.bridge.Arguments.createMap();
@@ -189,6 +281,10 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                 public void onClientConnectedToGroupOwner(java.net.Socket socket) {
                     String tempId = "TEMP-CLIENT-" + java.util.UUID.randomUUID().toString().substring(0,8);
                     PeerConnection peer = new PeerConnection(tempId, socket, messageHandler);
+                    if (wifiManager.getLastConnectingAddress() != null) {
+                        peer.setTransportAddress(wifiManager.getLastConnectingAddress());
+                        connectionManager.registerAlias(wifiManager.getLastConnectingAddress(), tempId);
+                    }
                     connectionManager.addConnection(peer);
                     
                     peer.start();
@@ -262,24 +358,21 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             // In a real production app, we'd ensure React Native sends the snake_case keys correctly.
             boolean sent = false;
             if (msg.getDestinationDeviceId() != null && !msg.getDestinationDeviceId().isEmpty()) {
-                boolean success = outgoingSendManager.sendDirect(msg, msg.getDestinationDeviceId());
-                if (!success) {
-                    promise.reject("NO_CONNECTION", "No active connection to the specified peer");
-                    return;
+                boolean directSuccess = outgoingSendManager.sendDirect(msg, msg.getDestinationDeviceId());
+                if (directSuccess) {
+                    sent = true;
+                } else if (connectionManager != null && !connectionManager.getActivePeerIds().isEmpty()) {
+                    // Direct socket not open, relay across connected mesh neighbors
+                    sent = outgoingSendManager.broadcast(msg);
                 }
-                sent = true;
             } else {
                 sent = outgoingSendManager.broadcast(msg);
-            }
-            
-            if (!sent) {
-                promise.reject("NO_CONNECTION", "No active connections in mesh. Message queued offline.");
-                return;
             }
             
             WritableMap result = Arguments.createMap();
             result.putString("message_id", msg.getMessageId());
             result.putDouble("accepted_at", System.currentTimeMillis());
+            result.putString("status", sent ? "SENT" : "QUEUED");
             promise.resolve(result);
             
         } catch (Exception e) {
@@ -302,6 +395,105 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
         }
     }
 
+    private void handleIncomingAck(NetworkMessage message) {
+        try {
+            String ackTo = null;
+            if (message.getPayload() != null && !message.getPayload().isEmpty()) {
+                org.json.JSONObject payloadObj = new org.json.JSONObject(message.getPayload());
+                ackTo = payloadObj.optString("ack_to");
+            }
+            if (ackTo != null && !ackTo.isEmpty()) {
+                boolean validOrigin = true;
+                if (roomDataEngine != null) {
+                    com.blackout.data.entity.NetworkMessageEntity originalEntity = roomDataEngine.getMessageEntity(ackTo);
+                    if (originalEntity != null && originalEntity.destinationDeviceId != null) {
+                        if (!originalEntity.destinationDeviceId.equals(message.getOriginDeviceId())) {
+                            Log.w(TAG, "Rejecting forged ACK for " + ackTo + " from unauthorized origin " + message.getOriginDeviceId());
+                            validOrigin = false;
+                        }
+                    }
+                }
+                if (validOrigin) {
+                    if (roomDataEngine != null) {
+                        roomDataEngine.markDelivered(ackTo, System.currentTimeMillis());
+                    }
+                    WritableMap statusMap = Arguments.createMap();
+                    statusMap.putString("message_id", ackTo);
+                    statusMap.putString("state", "DELIVERED");
+                    statusMap.putDouble("updated_at", (double) System.currentTimeMillis());
+                    statusMap.putInt("attempts", 1);
+
+                    WritableMap event = Arguments.createMap();
+                    event.putString("type", "MESSAGE_DELIVERY_UPDATED");
+                    event.putMap("status", statusMap);
+
+                    getReactApplicationContext()
+                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                        .emit("NativeEvent", event);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error processing incoming ACK payload", e);
+        }
+        emitMessageToJS(message);
+    }
+
+    private void handleIncomingDirectMessage(NetworkMessage message) {
+        if (roomDataEngine != null) {
+            roomDataEngine.saveMessage(message, "RECEIVED");
+        }
+        emitMessageToJS(message);
+
+        // Auto-generate and send reverse multi-hop delivery ACK back to origin sender
+        if (message.getMessageType() == MessageType.DIRECT && message.getOriginDeviceId() != null) {
+            try {
+                NetworkMessage ackMsg = new NetworkMessage.Builder()
+                    .messageId("ack_" + message.getMessageId())
+                    .originDeviceId(localDeviceId)
+                    .destinationDeviceId(message.getOriginDeviceId())
+                    .messageType(MessageType.ACK)
+                    .createdAt(System.currentTimeMillis())
+                    .ttl(message.getTtl() > 0 ? message.getTtl() : 15)
+                    .hopCount(0)
+                    .priority("NORMAL")
+                    .payload("{\"ack_to\":\"" + message.getMessageId() + "\"}")
+                    .payloadHash("")
+                    .signature("")
+                    .build();
+
+                if (outgoingSendManager != null) {
+                    boolean directSent = outgoingSendManager.sendDirect(ackMsg, ackMsg.getDestinationDeviceId());
+                    if (!directSent) {
+                        outgoingSendManager.broadcast(ackMsg);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to auto-generate ACK for direct message", e);
+            }
+        }
+    }
+
+    @ReactMethod
+    public void getDeliveryStatus(String messageId, Promise promise) {
+        try {
+            if (roomDataEngine != null) {
+                com.blackout.data.entity.NetworkMessageEntity entity = roomDataEngine.getMessageEntity(messageId);
+                if (entity != null) {
+                    WritableMap statusMap = Arguments.createMap();
+                    statusMap.putString("message_id", entity.messageId);
+                    statusMap.putString("state", entity.deliveryState != null ? entity.deliveryState : "QUEUED");
+                    statusMap.putDouble("updated_at", (double) (entity.deliveredAt > 0 ? entity.deliveredAt : entity.createdAt));
+                    statusMap.putInt("attempts", 1);
+                    promise.resolve(statusMap);
+                    return;
+                }
+            }
+            promise.resolve(null);
+        } catch (Exception e) {
+            promise.reject("DELIVERY_STATUS_ERROR", e);
+        }
+    }
+
     @ReactMethod
     public void getPeers(Promise promise) {
         try {
@@ -311,9 +503,17 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                 List<android.net.wifi.p2p.WifiP2pDevice> wifiPeers = networkEngine.getWifiPeers();
                 for (android.net.wifi.p2p.WifiP2pDevice device : wifiPeers) {
                     if (device.status == android.net.wifi.p2p.WifiP2pDevice.CONNECTED) continue;
+                    String canonicalId = connectionManager != null ? connectionManager.resolveCanonicalId(device.deviceAddress) : device.deviceAddress;
+                    boolean hasCanonical = !canonicalId.equals(device.deviceAddress);
+
                     WritableMap peer = Arguments.createMap();
-                    peer.putString("peer_id", device.deviceAddress);
-                    peer.putString("name", device.deviceName);
+                    peer.putString("peer_id", canonicalId);
+                    peer.putString("transport_address", device.deviceAddress);
+                    String friendlyName = device.deviceName;
+                    if (friendlyName == null || friendlyName.isEmpty() || friendlyName.equals(device.deviceAddress)) {
+                        friendlyName = "Node " + (hasCanonical ? canonicalId.substring(Math.max(0, canonicalId.length() - 4)).toUpperCase() : device.deviceAddress.substring(Math.max(0, device.deviceAddress.length() - 5)));
+                    }
+                    peer.putString("name", friendlyName);
                     peer.putString("connection_state", "DISCOVERED");
                     peer.putInt("signal_strength", 80);
                     peer.putDouble("last_seen_at", System.currentTimeMillis());
@@ -327,7 +527,11 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                     for (String peerId : connectedIds) {
                         WritableMap peer = Arguments.createMap();
                         peer.putString("peer_id", peerId);
-                        peer.putString("name", "Node " + peerId.substring(Math.max(0, peerId.length() - 4)));
+                        String transportAddr = connectionManager.resolveTransportAddress(peerId);
+                        if (transportAddr != null && !transportAddr.equals(peerId)) {
+                            peer.putString("transport_address", transportAddr);
+                        }
+                        peer.putString("name", "User #" + peerId.substring(Math.max(0, peerId.length() - 4)).toUpperCase());
                         peer.putString("connection_state", "CONNECTED");
                         peer.putInt("signal_strength", 100);
                         peer.putDouble("last_seen_at", System.currentTimeMillis());
@@ -348,7 +552,14 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             if (networkEngine instanceof AndroidNetworkEngine) {
                 WifiDirectManager wdm = ((AndroidNetworkEngine) networkEngine).getWifiDirectManager();
                 if (wdm != null) {
-                    wdm.connectToAddress(address);
+                    String targetAddress = address;
+                    if (connectionManager != null) {
+                        String transport = connectionManager.resolveTransportAddress(address);
+                        if (transport != null && transport.contains(":")) {
+                            targetAddress = transport;
+                        }
+                    }
+                    wdm.connectToAddress(targetAddress);
                 }
             }
             promise.resolve(null);

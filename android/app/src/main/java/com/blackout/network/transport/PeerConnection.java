@@ -131,4 +131,14 @@ public class PeerConnection {
     public void setPeerId(String newId) {
         this.peerId = newId;
     }
+
+    private String transportAddress;
+
+    public void setTransportAddress(String address) {
+        this.transportAddress = address;
+    }
+
+    public String getTransportAddress() {
+        return transportAddress;
+    }
 }

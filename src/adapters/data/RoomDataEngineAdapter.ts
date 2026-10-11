@@ -2,6 +2,7 @@ import { NativeModules } from 'react-native';
 import type { DataEngine } from "../../contracts/data/DataEngine";
 import type { Result } from "../../contracts/common/Result";
 import type { BlackoutError } from "../../contracts/common/BlackoutError";
+import type { ContactDto } from "../../contracts/data/ContactDto";
 import type { MessageDto } from "../../contracts/network/MessageDto";
 import type {
   EmergencyReportDto,
@@ -105,6 +106,15 @@ export class RoomDataEngineAdapter implements DataEngine {
     }
   }
 
+  async getRecentMessageIds(): Promise<Result<string[]>> {
+    try {
+      const res = await this.getNativeModule().getRecentMessageIds();
+      return { ok: true, data: res || [] };
+    } catch (e: any) {
+      return { ok: false, error: mapError(e, "Failed to get recent message IDs") };
+    }
+  }
+
   async saveMessage(message: MessageDto): Promise<Result<void>> {
     try {
       const nativeModule = this.getNativeModule();
@@ -135,9 +145,30 @@ export class RoomDataEngineAdapter implements DataEngine {
   async getPendingOutbound(): Promise<Result<MessageDto[]>> {
     try {
       const jsonStr = await this.getNativeModule().getPendingOutbound();
-      return { ok: true, data: JSON.parse(jsonStr) };
+      const rawList = JSON.parse(jsonStr);
+      const parsed = rawList.map((m: any) => {
+        if (m._payload_raw) {
+          try {
+            m.payload = JSON.parse(m._payload_raw);
+          } catch {
+            m.payload = m._payload_raw;
+          }
+          delete m._payload_raw;
+        }
+        return m;
+      });
+      return { ok: true, data: parsed };
     } catch (e: any) {
       return { ok: false, error: mapError(e, "Failed to get pending outbound") };
+    }
+  }
+
+  async updateDeliveryState(messageId: string, state: string): Promise<Result<void>> {
+    try {
+      await this.getNativeModule().updateDeliveryState(messageId, state);
+      return { ok: true, data: undefined };
+    } catch (e: any) {
+      return { ok: false, error: mapError(e, "Failed to update delivery state") };
     }
   }
 
@@ -271,6 +302,48 @@ export class RoomDataEngineAdapter implements DataEngine {
       return { ok: true, data: JSON.parse(jsonStr) };
     } catch (e: any) {
       return { ok: false, error: mapError(e, "Failed to calculate confidence") };
+    }
+  }
+
+  async saveContact(contact: ContactDto): Promise<Result<void>> {
+    try {
+      await this.getNativeModule().saveContact(JSON.stringify(contact));
+      this.notifyListeners({ type: "CONTACT_UPDATED", peer_id: contact.peer_id });
+      return { ok: true, data: undefined };
+    } catch (e: any) {
+      return { ok: false, error: mapError(e, "Failed to save contact") };
+    }
+  }
+
+  async getContact(peerId: string): Promise<Result<ContactDto>> {
+    try {
+      const res = await this.getNativeModule().getContact(peerId);
+      if (!res) {
+        return { ok: false, error: { code: "NOT_FOUND", message: `Contact not found: ${peerId}`, retryable: false, module: "DATA" } };
+      }
+      return { ok: true, data: JSON.parse(res) };
+    } catch (e: any) {
+      return { ok: false, error: mapError(e, "Failed to get contact") };
+    }
+  }
+
+  async getAllContacts(): Promise<Result<ContactDto[]>> {
+    try {
+      const res = await this.getNativeModule().getAllContacts();
+      const list: ContactDto[] = res ? JSON.parse(res) : [];
+      return { ok: true, data: list };
+    } catch (e: any) {
+      return { ok: false, error: mapError(e, "Failed to get all contacts") };
+    }
+  }
+
+  async searchContacts(query: string): Promise<Result<ContactDto[]>> {
+    try {
+      const res = await this.getNativeModule().searchContacts(query);
+      const list: ContactDto[] = res ? JSON.parse(res) : [];
+      return { ok: true, data: list };
+    } catch (e: any) {
+      return { ok: false, error: mapError(e, "Failed to search contacts") };
     }
   }
 

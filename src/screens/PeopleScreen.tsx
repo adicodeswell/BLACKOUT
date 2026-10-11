@@ -15,6 +15,7 @@ import RNFS from 'react-native-fs';
 import { useTheme } from '../theme/ThemeContext';
 import type { PeopleService } from '../services/PeopleService';
 import type { PeerDto } from '../contracts/network/PeerDto';
+import type { ContactDto } from '../contracts/data/ContactDto';
 
 interface PeopleScreenProps {
   peopleService: PeopleService;
@@ -29,9 +30,10 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
 }) => {
   const { theme } = useTheme();
   
-  const [activeTab, setActiveTab] = useState<'Chats' | 'Nearby'>('Chats');
+  const [activeTab, setActiveTab] = useState<'Chats' | 'Nearby' | 'Contacts'>('Chats');
   const [conversations, setConversations] = useState<any[]>([]);
   const [nearbyPeers, setNearbyPeers] = useState<PeerDto[]>([]);
+  const [contacts, setContacts] = useState<ContactDto[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -81,6 +83,10 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
     if (peerRes.ok) {
       setNearbyPeers(peerRes.data);
     }
+    const contactRes = await peopleService.getAllContacts();
+    if (contactRes.ok) {
+      setContacts(contactRes.data);
+    }
   }, [peopleService]);
 
   useEffect(() => {
@@ -91,9 +97,13 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
     const unsubMessages = peopleService.subscribeMessages(undefined, () => {
       setConversations(peopleService.getConversationsList());
     });
+    const unsubContacts = peopleService.subscribeContacts((allContacts) => {
+      setContacts(allContacts);
+    });
     return () => {
       unsubPeers();
       unsubMessages();
+      unsubContacts();
     };
   }, [loadData, peopleService]);
 
@@ -113,10 +123,32 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
     return nearbyPeers.filter(p => p.peer_id?.toLowerCase().includes(searchQuery.toLowerCase()) || (p as any).name?.toLowerCase().includes(searchQuery.toLowerCase()));
   };
 
+  const getFilteredContacts = () => {
+    if (!searchQuery) return contacts;
+    const q = searchQuery.toLowerCase();
+    return contacts.filter(c =>
+      c.peer_id.toLowerCase().includes(q) ||
+      c.name.toLowerCase().includes(q) ||
+      (c.custom_nickname && c.custom_nickname.toLowerCase().includes(q))
+    );
+  };
+
 
 
   const renderChatItem = ({ item }: { item: any }) => {
     const preview = item.lastMessage.payload?.text || 'Sent an attachment';
+    const isOutgoing = item.lastMessage.destination_device_id === item.peerId;
+    const deliveryState = item.lastMessage._local_delivery_state;
+    const stateBadge = isOutgoing ? (
+      deliveryState === 'DELIVERED' ? '✓✓ ' :
+      deliveryState === 'QUEUED' ? '⏳ ' :
+      deliveryState === 'FAILED' ? '❌ ' : '✓ '
+    ) : '';
+    const peerDisplay = item.peerId && item.peerId.length > 16 
+      ? `User #${item.peerId.slice(-4).toUpperCase()}` 
+      : (item.peerId || 'Unknown');
+    const avatarInitials = peerDisplay.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'BK';
+
     return (
       <TouchableOpacity
         style={[styles.chatCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
@@ -124,17 +156,17 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
         activeOpacity={0.7}
       >
         <View style={[styles.avatarCircle, { backgroundColor: theme.colors.primary }]}>
-          <Text style={styles.avatarText}>{item.peerId.substring(0, 2).toUpperCase()}</Text>
+          <Text style={styles.avatarText}>{avatarInitials}</Text>
         </View>
         <View style={styles.chatContent}>
           <View style={styles.chatHeader}>
-            <Text style={[styles.peerTitle, { color: theme.colors.textPrimary }]}>{item.peerId}</Text>
+            <Text style={[styles.peerTitle, { color: theme.colors.textPrimary }]}>{peerDisplay}</Text>
             <Text style={[styles.timeText, { color: theme.colors.textMuted }]}>
               {new Date(item.lastMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           </View>
           <Text style={[styles.previewText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-            {preview}
+            {stateBadge}{preview}
           </Text>
         </View>
       </TouchableOpacity>
@@ -143,45 +175,124 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
 
   const renderPeerItem = ({ item }: { item: PeerDto }) => {
     const isOnline = item.connection_state === 'CONNECTED' || item.connection_state === 'DISCOVERED';
+    const displayName = item.name || (item.peer_id && item.peer_id.length > 16 ? `User #${item.peer_id.slice(-4).toUpperCase()}` : (item.peer_id || 'Unknown'));
+    const avatarInitials = displayName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'BK';
+
     return (
       <TouchableOpacity
         style={[styles.peerCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.surfaceBorder }]}
-        onPress={async () => {
+        onPress={() => {
+          // Immediately open chat session without blocking
+          onStartChat(item.peer_id);
+          // Initiate background connection if currently discovered
           if (item.connection_state === 'DISCOVERED') {
-            setConnectingPeerId(item.peer_id);
-            setConnectionProgress('CONNECTING');
-            const result = await peopleService.connectToPeer(item.peer_id, (state) => {
-               setConnectionProgress(state);
-            });
-            setConnectingPeerId(null);
-            
-            if (result.ok) {
-               if (result.data) onStartChat(result.data);
-            } else {
-               Alert.alert("Connection Failed", result.error?.message || "Could not connect to peer.");
-            }
-          } else if (item.connection_state === 'CONNECTED') {
-            onStartChat(item.peer_id);
+            const target = item.transport_address || item.peer_id;
+            peopleService.connectToPeer(target).catch(() => {});
           }
         }}
         activeOpacity={0.7}
       >
         <View style={[styles.avatarCircle, { backgroundColor: theme.colors.surfaceElevated }]}>
-          <Text style={[styles.avatarText, { color: theme.colors.primary }]}>{item.peer_id.substring(0, 2).toUpperCase()}</Text>
+          <Text style={[styles.avatarText, { color: theme.colors.primary }]}>{avatarInitials}</Text>
         </View>
         <View style={styles.peerContent}>
-          <Text style={[styles.peerTitle, { color: theme.colors.textPrimary }]}>{(item as any).name || item.peer_id}</Text>
+          <Text style={[styles.peerTitle, { color: theme.colors.textPrimary }]}>{displayName}</Text>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: isOnline ? theme.colors.networkActive : theme.colors.textMuted }]} />
+            <View style={[styles.statusDot, { backgroundColor: item.connection_state === 'CONNECTED' ? theme.colors.networkActive : isOnline ? '#2196F3' : theme.colors.textMuted }]} />
             <Text style={[styles.statusText, { color: theme.colors.textSecondary }]}>
-              {connectingPeerId === item.peer_id && connectionProgress ? connectionProgress : (isOnline ? 'Nearby' : 'Out of range')}
+              {item.connection_state === 'CONNECTED' ? 'Connected' : isOnline ? 'Nearby' : 'Out of range'}
             </Text>
           </View>
         </View>
-        <View style={[styles.actionBtn, { backgroundColor: connectingPeerId === item.peer_id ? theme.colors.surfaceElevated : theme.colors.primary }]}>
-          <Text style={[styles.actionBtnText, connectingPeerId === item.peer_id && { color: theme.colors.textPrimary }]}>
-            {connectingPeerId === item.peer_id ? 'Wait...' : 'Message'}
+        <View style={[styles.actionBtn, { backgroundColor: theme.colors.primary }]}>
+          <Text style={styles.actionBtnText}>Chat</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderContactItem = ({ item }: { item: ContactDto }) => {
+    const isOnline = nearbyPeers.some(
+      (p) =>
+        p.peer_id === item.peer_id &&
+        (p.connection_state === 'CONNECTED' || p.connection_state === 'DISCOVERED')
+    );
+    const isConnected = nearbyPeers.some(
+      (p) => p.peer_id === item.peer_id && p.connection_state === 'CONNECTED'
+    );
+    const displayName =
+      item.custom_nickname ||
+      item.name ||
+      `User #${
+        item.peer_id.length > 4
+          ? item.peer_id.slice(-4).toUpperCase()
+          : item.peer_id
+      }`;
+    const avatarInitials =
+      displayName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'BK';
+    const uuidSuffix =
+      item.peer_id.length > 8 ? `...${item.peer_id.slice(-8)}` : item.peer_id;
+    const lastSeenText = isConnected
+      ? 'Connected'
+      : isOnline
+      ? 'Nearby'
+      : `Last seen ${new Date(item.last_seen_at).toLocaleDateString([], {
+          month: 'short',
+          day: 'numeric',
+        })}`;
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.peerCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.surfaceBorder,
+          },
+        ]}
+        onPress={() => onStartChat(item.peer_id)}
+        activeOpacity={0.7}
+      >
+        <View
+          style={[
+            styles.avatarCircle,
+            { backgroundColor: theme.colors.surfaceElevated },
+          ]}
+        >
+          <Text style={[styles.avatarText, { color: theme.colors.primary }]}>
+            {avatarInitials}
           </Text>
+        </View>
+        <View style={styles.peerContent}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={[styles.peerTitle, { color: theme.colors.textPrimary }]}>
+              {displayName}
+            </Text>
+            {item.is_favorite && <Text style={{ fontSize: 13 }}>⭐</Text>}
+          </View>
+          <Text style={{ fontSize: 11, color: theme.colors.textMuted, marginTop: 1 }}>
+            ID: {uuidSuffix} • {item.transport === 'BLE' ? 'BLE' : 'Wi-Fi Direct'}
+          </Text>
+          <View style={styles.statusRow}>
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor: isConnected
+                    ? theme.colors.networkActive
+                    : isOnline
+                    ? '#2196F3'
+                    : theme.colors.textMuted,
+                },
+              ]}
+            />
+            <Text style={[styles.statusText, { color: theme.colors.textSecondary }]}>
+              {lastSeenText}
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.actionBtn, { backgroundColor: theme.colors.primary }]}>
+          <Text style={styles.actionBtnText}>Chat</Text>
         </View>
       </TouchableOpacity>
     );
@@ -212,7 +323,7 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
           <NavIcon name={"Search" as any} color={theme.colors.textMuted} size={18} />
           <TextInput
             style={[styles.searchInput, { color: theme.colors.textPrimary }]}
-            placeholder="Search friends and nearby people..."
+            placeholder="Search friends, nearby, or contacts..."
             placeholderTextColor={theme.colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -238,13 +349,25 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
             Nearby ({nearbyPeers.length})
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.segmentTab, activeTab === 'Contacts' && { backgroundColor: theme.colors.primary }]}
+          onPress={() => setActiveTab('Contacts')}
+        >
+          <Text style={[styles.segmentText, { color: activeTab === 'Contacts' ? '#FFFFFF' : theme.colors.textSecondary }]}>
+            Contacts ({contacts.length})
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* List Content */}
       <FlatList
-        data={activeTab === 'Chats' ? getFilteredChats() : getFilteredPeers()}
+        data={(activeTab === 'Chats' ? getFilteredChats() : activeTab === 'Nearby' ? getFilteredPeers() : getFilteredContacts()) as any[]}
         keyExtractor={(item: any) => item.peerId || item.peer_id}
-        renderItem={activeTab === 'Chats' ? renderChatItem : renderPeerItem}
+        renderItem={(info: any) => {
+          if (activeTab === 'Chats') return renderChatItem(info);
+          if (activeTab === 'Nearby') return renderPeerItem(info);
+          return renderContactItem(info);
+        }}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />}
         ListEmptyComponent={
@@ -254,8 +377,23 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
             </View>
             <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>No {activeTab}</Text>
             <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
-              {searchQuery ? "No one matches your search." : (activeTab === 'Chats' ? "Tap 'Nearby' to find people around you and start a conversation." : "No one is broadcasting nearby right now.")}
+              {searchQuery
+                ? "No one matches your search."
+                : activeTab === 'Chats'
+                ? "Tap 'Nearby' or 'Contacts' to find people and start a conversation."
+                : activeTab === 'Nearby'
+                ? "No one is broadcasting nearby right now."
+                : "No saved contacts yet. Discovered peers are automatically saved here."}
             </Text>
+            {searchQuery.trim().length > 0 && (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: theme.colors.primary, marginTop: 16, paddingHorizontal: 20 }]}
+                onPress={() => onStartChat(searchQuery.trim())}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.actionBtnText}>Start Chat with "{searchQuery.trim()}"</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       />

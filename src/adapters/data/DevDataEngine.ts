@@ -21,6 +21,7 @@ import type {
   CreateResourceRequest,
   UpdateResourceRequest,
 } from "../../contracts/data/ResourceDto";
+import type { ContactDto } from "../../contracts/data/ContactDto";
 import type { DataEvent } from "../../contracts/data/DataEvents";
 
 export class DevDataEngine implements DataEngine {
@@ -28,6 +29,8 @@ export class DevDataEngine implements DataEngine {
   private incidents: Map<string, IncidentDto> = new Map();
   private evidenceMap: Map<string, EvidenceDto[]> = new Map();
   private resources: Map<string, ResourceDto> = new Map();
+  private messages: Map<string, MessageDto> = new Map();
+  private contacts: Map<string, ContactDto> = new Map();
   private listeners: Set<(event: DataEvent) => void> = new Set();
 
   constructor() {
@@ -204,26 +207,63 @@ export class DevDataEngine implements DataEngine {
     return { ok: true, data: report };
   }
 
-  async saveMessage(_message: MessageDto): Promise<Result<void>> {
+  async saveMessage(message: MessageDto): Promise<Result<void>> {
+    const copy = { ...message };
+    if (!copy._local_delivery_state) {
+      if (copy.destination_device_id && copy.origin_device_id && copy.origin_device_id !== "self-node-01") {
+        copy._local_delivery_state = 'RECEIVED';
+      } else {
+        copy._local_delivery_state = 'QUEUED';
+      }
+    }
+    this.messages.set(copy.message_id, copy);
     return { ok: true, data: undefined };
   }
 
-  async getMessage(_messageId: string): Promise<Result<MessageDto>> {
-    return {
-      ok: false,
-      error: { code: "NOT_FOUND", message: "Message not found", retryable: false, module: "DATA" },
-    };
+  async getMessage(messageId: string): Promise<Result<MessageDto>> {
+    const msg = this.messages.get(messageId);
+    if (!msg) {
+      return {
+        ok: false,
+        error: { code: "NOT_FOUND", message: `Message ${messageId} not found`, retryable: false, module: "DATA" },
+      };
+    }
+    return { ok: true, data: msg };
   }
 
   async getAllMessages(): Promise<Result<MessageDto[]>> {
-    return { ok: true, data: [] };
+    const list = Array.from(this.messages.values()).sort((a, b) => a.created_at - b.created_at);
+    return { ok: true, data: list };
+  }
+
+  async getRecentMessageIds(): Promise<Result<string[]>> {
+    const ids = Array.from(this.messages.values())
+      .sort((a, b) => b.created_at - a.created_at)
+      .slice(0, 100)
+      .map(m => m.message_id);
+    return { ok: true, data: ids };
   }
 
   async getPendingOutbound(): Promise<Result<MessageDto[]>> {
-    return { ok: true, data: [] };
+    const list = Array.from(this.messages.values())
+      .filter((m) => m._local_delivery_state === 'QUEUED')
+      .sort((a, b) => a.created_at - b.created_at);
+    return { ok: true, data: list };
   }
 
-  async markDelivered(_messageId: string, _deliveredAt: number): Promise<Result<void>> {
+  async updateDeliveryState(messageId: string, state: string): Promise<Result<void>> {
+    const msg = this.messages.get(messageId);
+    if (msg) {
+      msg._local_delivery_state = state as any;
+    }
+    return { ok: true, data: undefined };
+  }
+
+  async markDelivered(messageId: string, _deliveredAt: number): Promise<Result<void>> {
+    const msg = this.messages.get(messageId);
+    if (msg) {
+      msg._local_delivery_state = 'DELIVERED';
+    }
     return { ok: true, data: undefined };
   }
 
@@ -396,6 +436,35 @@ export class DevDataEngine implements DataEngine {
     };
 
     return { ok: true, data: state };
+  }
+
+  async saveContact(contact: ContactDto): Promise<Result<void>> {
+    this.contacts.set(contact.peer_id, { ...contact });
+    this.notifyListeners({ type: "CONTACT_UPDATED", peer_id: contact.peer_id });
+    return { ok: true, data: undefined };
+  }
+
+  async getContact(peerId: string): Promise<Result<ContactDto>> {
+    const c = this.contacts.get(peerId);
+    if (!c) {
+      return { ok: false, error: { code: "NOT_FOUND", message: `Contact not found: ${peerId}`, retryable: false, module: "DATA" } };
+    }
+    return { ok: true, data: { ...c } };
+  }
+
+  async getAllContacts(): Promise<Result<ContactDto[]>> {
+    const list = Array.from(this.contacts.values()).sort((a, b) => (b.last_seen_at || 0) - (a.last_seen_at || 0));
+    return { ok: true, data: list };
+  }
+
+  async searchContacts(query: string): Promise<Result<ContactDto[]>> {
+    const q = query.toLowerCase();
+    const list = Array.from(this.contacts.values()).filter(c => 
+      c.peer_id.toLowerCase().includes(q) ||
+      c.name.toLowerCase().includes(q) ||
+      (c.custom_nickname && c.custom_nickname.toLowerCase().includes(q))
+    ).sort((a, b) => (b.last_seen_at || 0) - (a.last_seen_at || 0));
+    return { ok: true, data: list };
   }
 
   subscribe(listener: (event: DataEvent) => void): () => void {

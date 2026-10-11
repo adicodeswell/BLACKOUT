@@ -52,6 +52,10 @@ public class ConnectionManager {
         conn.setPeerId(newId);
         connections.put(newId, conn);
         aliases.put(oldId, newId);
+        if (conn.getTransportAddress() != null) {
+            aliases.put(conn.getTransportAddress(), newId);
+            aliases.put(newId, conn.getTransportAddress());
+        }
         Log.i(TAG, "Renamed connection " + oldId + " to " + newId);
         return true;
     }
@@ -108,6 +112,29 @@ public class ConnectionManager {
         return conn;
     }
 
+    public synchronized void registerAlias(String aliasOrTransport, String canonicalId) {
+        if (aliasOrTransport != null && canonicalId != null) {
+            aliases.put(aliasOrTransport, canonicalId);
+            aliases.put(canonicalId, aliasOrTransport);
+        }
+    }
+
+    public synchronized String resolveCanonicalId(String idOrAlias) {
+        if (idOrAlias == null) return null;
+        if (connections.containsKey(idOrAlias)) return idOrAlias;
+        return aliases.getOrDefault(idOrAlias, idOrAlias);
+    }
+
+    public synchronized String resolveTransportAddress(String canonicalId) {
+        if (canonicalId == null) return null;
+        for (java.util.Map.Entry<String, String> entry : aliases.entrySet()) {
+            if (entry.getValue().equals(canonicalId) && entry.getKey().contains(":")) {
+                return entry.getKey();
+            }
+        }
+        return canonicalId;
+    }
+
     /**
      * Broadcasts a framed byte payload to ALL currently connected peers.
      * Useful for mesh store-and-forward.
@@ -118,6 +145,30 @@ public class ConnectionManager {
             conn.send(payload);
         }
         return true;
+    }
+
+    /**
+     * Broadcasts a framed byte payload to all connected peers EXCEPT the specified peer ID.
+     * Implements split-horizon suppression to prevent routing loops in multi-hop mesh.
+     */
+    public synchronized boolean broadcastExcept(byte[] payload, String excludedPeerId) {
+        if (connections.isEmpty()) return false;
+        boolean sentAny = false;
+        for (PeerConnection conn : connections.values()) {
+            if (conn.isReady()) {
+                String id = conn.getPeerId();
+                if (excludedPeerId != null) {
+                    if (excludedPeerId.equals(id) || 
+                        excludedPeerId.equals(conn.getTransportAddress()) ||
+                        (aliases.containsKey(excludedPeerId) && aliases.get(excludedPeerId).equals(id))) {
+                        continue;
+                    }
+                }
+                conn.send(payload);
+                sentAny = true;
+            }
+        }
+        return sentAny;
     }
     
     /**
