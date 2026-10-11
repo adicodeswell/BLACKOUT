@@ -485,20 +485,6 @@ export class PeopleService {
     const pendingRes = await this.dataEngine.getPendingOutbound();
     if (pendingRes.ok && pendingRes.data.length > 0) {
       for (const msg of pendingRes.data) {
-        // Resolve canonical peer ID if destination is currently a transport alias
-        if (msg.message_type === "DIRECT" && msg.destination_device_id) {
-          const rawDest = msg.destination_device_id;
-          const knownPeer = this.activePeers.find(
-            (p) => p.peer_id === rawDest || (p as any).transport_address === rawDest
-          );
-          if (knownPeer && !knownPeer.peer_id.includes(":") && !knownPeer.peer_id.startsWith("TEMP-")) {
-            msg.destination_device_id = knownPeer.peer_id;
-            if (this.dataEngine && this.dataEngine.saveMessage) {
-              await this.dataEngine.saveMessage(msg).catch(() => {});
-            }
-          }
-        }
-
         // Attempt to resend
         let sendRes;
         if (msg.message_type === "DIRECT" && msg.destination_device_id) {
