@@ -96,7 +96,7 @@ public class WifiDirectManager {
             }
             
             // Autonomous Background Connection:
-            if (!peers.isEmpty() && currentState == State.DISCONNECTED) {
+            if (!peers.isEmpty() && (currentState == State.DISCOVERING || currentState == State.DISCONNECTED)) {
                 for (WifiP2pDevice candidate : peers) {
                     if (candidate.status == WifiP2pDevice.AVAILABLE && candidate.deviceAddress != null) {
                         boolean shouldInitiate = false;
@@ -111,6 +111,7 @@ public class WifiDirectManager {
                         }
                         if (shouldInitiate) {
                             Log.i(TAG, "Autonomous Peering: Initiating connect to " + candidate.deviceAddress);
+                            currentState = State.CONNECTING;
                             connectToAddress(candidate.deviceAddress);
                             break;
                         }

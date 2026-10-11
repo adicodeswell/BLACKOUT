@@ -38,7 +38,8 @@ public class PeerConnection {
         this.socket = socket;
         this.listener = listener;
         try {
-            this.socket.setSoTimeout(15000); // Handshake timeout
+            this.socket.setSoTimeout(30000); // Handshake timeout
+            this.socket.setTcpNoDelay(true);
         } catch (Exception ignored) {}
     }
 
@@ -124,7 +125,10 @@ public class PeerConnection {
     public void setReady(boolean ready) {
         this.isReady = ready;
         try {
-            if (ready) socket.setSoTimeout(0); // Infinite wait after handshake
+            if (ready && socket != null && !socket.isClosed()) {
+                socket.setSoTimeout(0); // Infinite wait after handshake
+                socket.setKeepAlive(true);
+            }
         } catch (Exception ignored) {}
     }
 

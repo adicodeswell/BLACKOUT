@@ -32,14 +32,56 @@ public class MessageQueue {
      * Drains the queue for a specific peer when they reconnect.
      */
     public List<NetworkMessage> drainPendingDirect(String peerId) {
-        ConcurrentLinkedQueue<NetworkMessage> q = pendingDirectMessages.get(peerId);
-        if (q == null) return new ArrayList<>();
-        
-        List<NetworkMessage> list = new ArrayList<>(q);
-        q.clear(); // Empty the queue since we are sending them
+        return drainPendingDirect(peerId, null);
+    }
+
+    /**
+     * Drains the queue for a specific peer when they reconnect, checking both
+     * canonical peerId and any transport alias (e.g. MAC address).
+     */
+    public List<NetworkMessage> drainPendingDirect(String peerId, String transportAlias) {
+        List<NetworkMessage> list = new ArrayList<>();
+        if (peerId != null) {
+            ConcurrentLinkedQueue<NetworkMessage> q = pendingDirectMessages.remove(peerId);
+            if (q != null) {
+                list.addAll(q);
+            }
+        }
+        if (transportAlias != null && !transportAlias.equals(peerId)) {
+            ConcurrentLinkedQueue<NetworkMessage> qAlias = pendingDirectMessages.remove(transportAlias);
+            if (qAlias != null) {
+                for (NetworkMessage m : qAlias) {
+                    if (peerId != null && !peerId.equals(m.getDestinationDeviceId())) {
+                        NetworkMessage rewritten = new NetworkMessage.Builder()
+                                .protocolVersion(m.getProtocolVersion())
+                                .messageId(m.getMessageId())
+                                .originDeviceId(m.getOriginDeviceId())
+                                .destinationDeviceId(peerId)
+                                .messageType(m.getMessageType())
+                                .createdAt(m.getCreatedAt())
+                                .ttl(m.getTtl())
+                                .hopCount(m.getHopCount())
+                                .priority(m.getPriority())
+                                .payload(m.getPayload())
+                                .payloadHash(m.getPayloadHash())
+                                .signature(m.getSignature())
+                                .build();
+                        list.add(rewritten);
+                    } else {
+                        list.add(m);
+                    }
+                }
+            }
+        }
         return list;
     }
     
+    public List<NetworkMessage> drainPendingBroadcasts() {
+        List<NetworkMessage> list = new ArrayList<>(pendingBroadcasts);
+        pendingBroadcasts.clear();
+        return list;
+    }
+
     public List<NetworkMessage> getPendingBroadcasts() {
         return new ArrayList<>(pendingBroadcasts);
     }

@@ -89,11 +89,12 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                 public void onHandshakeComplete(String peerId) {
                     // Flush pending offline direct messages and broadcasts
                     try {
-                        java.util.List<NetworkMessage> queuedDirect = messageQueue.drainPendingDirect(peerId);
+                        String transportAddr = connectionManager != null ? connectionManager.resolveTransportAddress(peerId) : null;
+                        java.util.List<NetworkMessage> queuedDirect = messageQueue.drainPendingDirect(peerId, transportAddr);
                         for (NetworkMessage m : queuedDirect) {
                             outgoingSendManager.sendDirect(m, peerId);
                         }
-                        java.util.List<NetworkMessage> queuedBroadcasts = messageQueue.getPendingBroadcasts();
+                        java.util.List<NetworkMessage> queuedBroadcasts = messageQueue.drainPendingBroadcasts();
                         for (NetworkMessage b : queuedBroadcasts) {
                             outgoingSendManager.sendDirect(b, peerId);
                         }
@@ -128,6 +129,22 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                     } catch (Exception ignored) {}
 
                     String dest = message.getDestinationDeviceId();
+                    String myMac = null;
+                    if (networkEngine != null) {
+                        WifiDirectManager wdm = networkEngine.getWifiDirectManager();
+                        if (wdm != null) myMac = wdm.getThisDeviceAddress();
+                    }
+                    boolean isForMe = false;
+                    if (dest != null && !dest.isEmpty()) {
+                        if (dest.equals(localDeviceId)) {
+                            isForMe = true;
+                        } else if (myMac != null && dest.equalsIgnoreCase(myMac)) {
+                            isForMe = true;
+                        } else if (connectionManager != null && localDeviceId != null && localDeviceId.equals(connectionManager.resolveCanonicalId(dest))) {
+                            isForMe = true;
+                        }
+                    }
+
                     if (dest == null || dest.isEmpty()) {
                         // Broadcast / Hazard / Report: deliver to local UI and forward deeper into mesh
                         if (roomDataEngine != null) {
@@ -137,7 +154,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                         if (forwardingEngine != null && forwardingEngine.shouldForward(message)) {
                             forwardingEngine.forwardMessage(message, sourcePeerId);
                         }
-                    } else if (dest.equals(localDeviceId)) {
+                    } else if (isForMe) {
                         // Directed to this device: final hop reached
                         if (message.getMessageType() == MessageType.ACK) {
                             handleIncomingAck(message);
