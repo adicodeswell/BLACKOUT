@@ -134,9 +134,13 @@ public class BleDiscoveryEngine {
                     .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_LOW)
                     .build();
 
-            AdvertiseData.Builder dataBuilder = new AdvertiseData.Builder()
+            AdvertiseData advertiseData = new AdvertiseData.Builder()
                     .setIncludeDeviceName(false)
-                    .addServiceUuid(BLACKOUT_SERVICE_UUID);
+                    .addServiceUuid(BLACKOUT_SERVICE_UUID)
+                    .build();
+
+            AdvertiseData.Builder responseBuilder = new AdvertiseData.Builder()
+                    .setIncludeDeviceName(false);
 
             if (localDeviceId != null && !localDeviceId.isEmpty()) {
                 try {
@@ -144,16 +148,16 @@ public class BleDiscoveryEngine {
                     java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap(new byte[16]);
                     bb.putLong(u.getMostSignificantBits());
                     bb.putLong(u.getLeastSignificantBits());
-                    dataBuilder.addServiceData(BLACKOUT_SERVICE_UUID, bb.array());
+                    responseBuilder.addServiceData(BLACKOUT_SERVICE_UUID, bb.array());
                 } catch (Exception e) {
                     byte[] fallback = localDeviceId.substring(0, Math.min(16, localDeviceId.length())).getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                    dataBuilder.addServiceData(BLACKOUT_SERVICE_UUID, fallback);
+                    responseBuilder.addServiceData(BLACKOUT_SERVICE_UUID, fallback);
                 }
             }
 
-            AdvertiseData data = dataBuilder.build();
+            AdvertiseData scanResponse = responseBuilder.build();
 
-            advertiser.startAdvertising(settings, data, advertiseCallback);
+            advertiser.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback);
 
             // Start Scanning
             ScanFilter filter = new ScanFilter.Builder()

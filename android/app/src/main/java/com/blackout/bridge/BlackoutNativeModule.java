@@ -268,7 +268,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             wifiManager.setDiscoveryCallback(new WifiDirectManager.DiscoveryCallback() {
                 @Override
                 public void onThisDeviceChanged(android.net.wifi.p2p.WifiP2pDevice thisDevice) {
-                    if (thisDevice != null && thisDevice.deviceAddress != null) {
+                    if (thisDevice != null && thisDevice.deviceAddress != null && WifiDirectManager.isValidMacAddress(thisDevice.deviceAddress)) {
                         if (connectionManager != null) {
                             connectionManager.registerLocalAlias(thisDevice.deviceAddress);
                         }

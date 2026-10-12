@@ -109,6 +109,7 @@ export const PeopleScreen: React.FC<PeopleScreenProps> = ({
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    await peopleService.discoverPeers().catch(() => {});
     await loadData();
     setRefreshing(false);
   };

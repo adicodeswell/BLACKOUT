@@ -78,12 +78,69 @@ public class WifiDirectManager {
         this.localDeviceId = localDeviceId;
     }
 
+    public static boolean isValidMacAddress(String mac) {
+        if (mac == null || mac.trim().isEmpty()) return false;
+        if ("02:00:00:00:00:00".equalsIgnoreCase(mac.trim())) return false;
+        return mac.trim().matches("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
+    }
+
     public void setThisDeviceAddress(String thisDeviceAddress) {
-        this.thisDeviceAddress = thisDeviceAddress;
+        if (isValidMacAddress(thisDeviceAddress)) {
+            this.thisDeviceAddress = thisDeviceAddress;
+        }
     }
 
     public String getThisDeviceAddress() {
         return thisDeviceAddress;
+    }
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Runnable pendingConnectRunnable;
+    private String pendingConnectAddress;
+    private boolean isHeartbeatRunning = false;
+
+    private final Runnable discoveryRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (p2pManager != null && channel != null) {
+                if (currentState == State.DISCOVERING || currentState == State.DISCONNECTED) {
+                    Log.i(TAG, "Discovery Heartbeat: Ensuring peer discovery is active...");
+                    discoverPeersInternal();
+                }
+            }
+            mainHandler.postDelayed(this, 20000);
+        }
+    };
+
+    private synchronized void scheduleConnection(final String targetAddress, long delayMs) {
+        if (currentState == State.CONNECTING || currentState == State.CONNECTED) return;
+        if (pendingConnectRunnable != null && targetAddress.equals(pendingConnectAddress)) {
+            return;
+        }
+        cancelPendingConnection();
+        pendingConnectAddress = targetAddress;
+        pendingConnectRunnable = () -> {
+            pendingConnectRunnable = null;
+            pendingConnectAddress = null;
+            if (currentState == State.DISCOVERING || currentState == State.DISCONNECTED) {
+                Log.i(TAG, "Initiating Wi-Fi Direct connection to " + targetAddress + " (after delay " + delayMs + "ms)");
+                connectToAddress(targetAddress);
+            }
+        };
+        if (delayMs <= 0) {
+            mainHandler.post(pendingConnectRunnable);
+        } else {
+            Log.i(TAG, "Scheduling Wi-Fi Direct connection to " + targetAddress + " in " + delayMs + "ms (tie-breaker wait)");
+            mainHandler.postDelayed(pendingConnectRunnable, delayMs);
+        }
+    }
+
+    private synchronized void cancelPendingConnection() {
+        if (pendingConnectRunnable != null) {
+            mainHandler.removeCallbacks(pendingConnectRunnable);
+            pendingConnectRunnable = null;
+            pendingConnectAddress = null;
+        }
     }
 
     private final WifiP2pManager.PeerListListener peerListListener = new WifiP2pManager.PeerListListener() {
@@ -97,24 +154,27 @@ public class WifiDirectManager {
             }
             
             // Autonomous Background Connection:
-            if (!peers.isEmpty() && currentState == State.DISCONNECTED) {
+            if (!peers.isEmpty() && (currentState == State.DISCOVERING || currentState == State.DISCONNECTED)) {
                 for (WifiP2pDevice candidate : peers) {
                     if (candidate.status == WifiP2pDevice.AVAILABLE && candidate.deviceAddress != null) {
-                        boolean shouldInitiate = false;
-                        if (thisDeviceAddress != null) {
-                            // Symmetric deterministic tie-breaker: device with lexicographically greater MAC initiates
-                            shouldInitiate = thisDeviceAddress.compareTo(candidate.deviceAddress) > 0;
-                        } else if (localDeviceId != null) {
-                            // Fallback using deterministic hash
-                            int localHash = localDeviceId.hashCode();
+                        boolean shouldInitiateImmediately = false;
+                        long delayMs = 0;
+
+                        if (isValidMacAddress(thisDeviceAddress) && isValidMacAddress(candidate.deviceAddress)) {
+                            // Both have valid hardware MAC addresses: symmetric deterministic tie-breaker
+                            shouldInitiateImmediately = thisDeviceAddress.compareToIgnoreCase(candidate.deviceAddress) > 0;
+                            delayMs = shouldInitiateImmediately ? 0 : 3500;
+                        } else {
+                            // One or both MACs are masked by Android: fallback using UUID hash + jitter
+                            int localHash = localDeviceId != null ? localDeviceId.hashCode() : 0;
                             int candidateHash = candidate.deviceAddress.hashCode();
-                            shouldInitiate = localHash > candidateHash;
+                            shouldInitiateImmediately = localHash > candidateHash;
+                            int jitter = Math.abs(localHash % 500);
+                            delayMs = shouldInitiateImmediately ? jitter : (3000 + jitter);
                         }
-                        if (shouldInitiate) {
-                            Log.i(TAG, "Autonomous Peering: Initiating connect to " + candidate.deviceAddress);
-                            connectToAddress(candidate.deviceAddress);
-                            break;
-                        }
+
+                        scheduleConnection(candidate.deviceAddress, delayMs);
+                        break;
                     }
                 }
             }
@@ -123,6 +183,15 @@ public class WifiDirectManager {
 
     @SuppressLint("MissingPermission")
     public void discoverPeers() {
+        if (!isHeartbeatRunning) {
+            isHeartbeatRunning = true;
+            mainHandler.postDelayed(discoveryRunnable, 20000);
+        }
+        discoverPeersInternal();
+    }
+
+    @SuppressLint("MissingPermission")
+    private void discoverPeersInternal() {
         if (p2pManager == null || channel == null) return;
         if (currentState == State.CONNECTING || currentState == State.CONNECTED) {
             Log.i(TAG, "Skipping discovery because state is " + currentState);
@@ -160,6 +229,7 @@ public class WifiDirectManager {
     public void connectToAddress(String deviceAddress) {
         if (p2pManager == null || channel == null) return;
         
+        cancelPendingConnection();
         this.lastConnectingAddress = deviceAddress;
         Log.i(TAG, "Connecting to address: " + deviceAddress);
         currentState = State.CONNECTING;
@@ -184,12 +254,18 @@ public class WifiDirectManager {
             public void onFailure(int reason) {
                 Log.e(TAG, "Connect failed. Reason: " + reason);
                 currentState = State.DISCONNECTED;
+                cancelPendingConnection();
                 if (p2pManager != null && channel != null) {
                     p2pManager.removeGroup(channel, null);
                 }
                 if (discoveryCallback != null) {
                     discoveryCallback.onConnectionStateChanged(deviceAddress, State.DISCONNECTED);
                 }
+                mainHandler.postDelayed(() -> {
+                    if (currentState == State.DISCONNECTED) {
+                        discoverPeersInternal();
+                    }
+                }, 2000);
             }
         });
     }
@@ -203,19 +279,24 @@ public class WifiDirectManager {
                 if (WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION.equals(action)) {
                     WifiP2pDevice thisDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE);
                     if (thisDevice != null && thisDevice.deviceAddress != null) {
-                        thisDeviceAddress = thisDevice.deviceAddress;
-                        Log.i(TAG, "Discovered local Wi-Fi P2P device address: " + thisDeviceAddress);
-                        if (discoveryCallback != null) {
-                            discoveryCallback.onThisDeviceChanged(thisDevice);
+                        if (isValidMacAddress(thisDevice.deviceAddress)) {
+                            thisDeviceAddress = thisDevice.deviceAddress;
+                            Log.i(TAG, "Discovered valid local Wi-Fi P2P device address: " + thisDeviceAddress);
+                            if (discoveryCallback != null) {
+                                discoveryCallback.onThisDeviceChanged(thisDevice);
+                            }
+                        } else {
+                            Log.i(TAG, "Local device address is masked by Android (" + thisDevice.deviceAddress + "), ignoring as hardware MAC");
                         }
                     }
                 } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION.equals(action)) {
-                    if (p2pManager != null && currentState != State.CONNECTING) {
+                    if (p2pManager != null && currentState != State.CONNECTING && currentState != State.CONNECTED) {
                         p2pManager.requestPeers(channel, peerListListener);
                     }
                 } else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION.equals(action)) {
                     android.net.NetworkInfo networkInfo = intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO);
                     if (networkInfo != null && networkInfo.isConnected()) {
+                        cancelPendingConnection();
                         currentState = State.CONNECTED;
                         p2pManager.requestConnectionInfo(channel, info -> {
                             if (info.groupFormed && !info.isGroupOwner) {
@@ -249,10 +330,16 @@ public class WifiDirectManager {
                             }
                         });
                     } else {
+                        cancelPendingConnection();
                         currentState = State.DISCONNECTED;
                         if (p2pManager != null && channel != null) {
                             p2pManager.removeGroup(channel, null);
                         }
+                        mainHandler.postDelayed(() -> {
+                            if (currentState == State.DISCONNECTED) {
+                                discoverPeersInternal();
+                            }
+                        }, 2000);
                     }
                 }
             }
@@ -260,6 +347,9 @@ public class WifiDirectManager {
     }
 
     public void stop() {
+        mainHandler.removeCallbacks(discoveryRunnable);
+        isHeartbeatRunning = false;
+        cancelPendingConnection();
         if (receiver != null && context != null) {
             try {
                 context.unregisterReceiver(receiver);

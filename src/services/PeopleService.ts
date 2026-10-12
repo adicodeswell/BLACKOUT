@@ -351,6 +351,15 @@ export class PeopleService {
     });
   }
 
+  async discoverPeers(): Promise<Result<PeerDto[]>> {
+    const res = await this.networkEngine.discoverPeers();
+    if (res.ok) {
+      this.activePeers = res.data;
+      this.notifyPeerListeners();
+    }
+    return res;
+  }
+
   async getPeers(): Promise<Result<PeerDto[]>> {
     const res = await this.networkEngine.getPeers();
     if (res.ok) {
