@@ -5,11 +5,13 @@ import androidx.room.RoomDatabase;
 import androidx.room.TypeConverters;
 
 import com.blackout.data.converters.RoomConverters;
+import com.blackout.data.dao.ContactDao;
 import com.blackout.data.dao.EmergencyReportDao;
 import com.blackout.data.dao.IncidentDao;
 import com.blackout.data.dao.NetworkMessageDao;
 import com.blackout.data.dao.ResourceDao;
 import com.blackout.data.dao.EvidenceDao;
+import com.blackout.data.entity.ContactEntity;
 import com.blackout.data.entity.EmergencyReportEntity;
 import com.blackout.data.entity.EvidenceEntity;
 import com.blackout.data.entity.IncidentEntity;
@@ -22,9 +24,10 @@ import com.blackout.data.entity.ResourceEntity;
         EmergencyReportEntity.class,
         IncidentEntity.class,
         EvidenceEntity.class,
-        ResourceEntity.class
+        ResourceEntity.class,
+        ContactEntity.class
     },
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters({RoomConverters.class})
@@ -34,4 +37,5 @@ public abstract class BlackoutDatabase extends RoomDatabase {
     public abstract IncidentDao incidentDao();
     public abstract ResourceDao resourceDao();
     public abstract EvidenceDao evidenceDao();
+    public abstract ContactDao contactDao();
 }

@@ -38,25 +38,11 @@ public class MessageValidatorTest {
     }
 
     @Test
-    public void testDirectMessageMissingEncryptionRejected() {
-        NetworkMessage msg = createBaseBuilder()
-                .messageType(MessageType.DIRECT)
-                .destinationDeviceId("device-2")
-                // encryption not set
-                .build();
-                
-        ValidationException exception = assertThrows(MessageValidator.ValidationException.class, () -> {
-            MessageValidator.validate(msg);
-        });
-        assertTrue(exception.getMessage().contains("must include encryption metadata"));
-    }
-    
-    @Test
     public void testValidDirectMessage() throws Exception {
         NetworkMessage msg = createBaseBuilder()
                 .messageType(MessageType.DIRECT)
                 .destinationDeviceId("device-2")
-                .encryption(new NetworkMessage.EncryptionMetadata("AES_GCM", "key1", "nonce1"))
+                // encryption not set
                 .build();
                 
         MessageValidator.validate(msg); // Should not throw

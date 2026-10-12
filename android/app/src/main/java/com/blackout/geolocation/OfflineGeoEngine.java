@@ -6,11 +6,13 @@ import com.blackout.geolocation.model.MapRegionInternal;
 import com.blackout.geolocation.model.RouteComputation;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Pure-Java GEO engine facade.
@@ -85,6 +87,9 @@ public final class OfflineGeoEngine {
 
     private final Map<String, HazardState> hazards =
             new LinkedHashMap<>();
+
+    private final Map<String, GeoPoint> peerLocations =
+            new ConcurrentHashMap<>();
 
     private RoadGraph activeGraph;
     private MapRegionInternal activeRegion;
@@ -254,6 +259,113 @@ public final class OfflineGeoEngine {
                 a,
                 b
         );
+    }
+
+    public void updatePeerLocation(String peerId, GeoPoint location) {
+        if (peerId != null && location != null) {
+            peerLocations.put(peerId, location);
+        }
+    }
+
+    public void updatePeerLocation(String peerId, double latitude, double longitude) {
+        if (peerId != null) {
+            peerLocations.put(peerId, new GeoPoint(latitude, longitude));
+        }
+    }
+
+    public GeoPoint getPeerLocation(String peerId) {
+        if (peerId == null) return null;
+        return peerLocations.get(peerId);
+    }
+
+    public GeoPoint getSelfLocation() {
+        try {
+            LocationSample sample = getCurrentLocation();
+            if (sample != null) {
+                return new GeoPoint(sample.getLatitude(), sample.getLongitude());
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /**
+     * Compares candidate neighbor distances against the intended recipient's last known coordinates.
+     *
+     * @param destinationPeerId The intended recipient peer ID
+     * @param candidatePeerIds  Candidate neighbors to evaluate
+     * @return Map of peerId -> distance in meters to destination
+     */
+    public Map<String, Double> compareNeighborDistances(
+            String destinationPeerId,
+            Collection<String> candidatePeerIds
+    ) {
+        if (destinationPeerId == null || candidatePeerIds == null) {
+            return Collections.emptyMap();
+        }
+        GeoPoint destLoc = getPeerLocation(destinationPeerId);
+        if (destLoc == null) {
+            return Collections.emptyMap();
+        }
+        Map<String, Double> distances = new LinkedHashMap<>();
+        for (String peerId : candidatePeerIds) {
+            GeoPoint peerLoc = getPeerLocation(peerId);
+            if (peerLoc != null) {
+                distances.put(peerId, calculateDistance(peerLoc, destLoc));
+            }
+        }
+        return Collections.unmodifiableMap(distances);
+    }
+
+    /**
+     * Filters candidate neighbor peers to strictly those that are geographically closer
+     * to the destination's last known coordinates than the local node (GPSR Greedy Forwarding).
+     *
+     * @param destinationPeerId The intended recipient peer ID
+     * @param candidatePeerIds  Candidate neighbors to filter
+     * @return List of peer IDs where distance(peer, destination) < distance(self, destination)
+     */
+    public List<String> filterCloserNeighbors(
+            String destinationPeerId,
+            List<String> candidatePeerIds
+    ) {
+        if (destinationPeerId == null || candidatePeerIds == null || candidatePeerIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        GeoPoint destLoc = getPeerLocation(destinationPeerId);
+        if (destLoc == null) {
+            return Collections.emptyList();
+        }
+
+        GeoPoint selfLoc = getSelfLocation();
+        if (selfLoc == null) {
+            return Collections.emptyList();
+        }
+
+        double selfDistToDest = calculateDistance(selfLoc, destLoc);
+        List<String> closerPeers = new ArrayList<>();
+
+        for (String peerId : candidatePeerIds) {
+            GeoPoint peerLoc = getPeerLocation(peerId);
+            if (peerLoc != null) {
+                double peerDistToDest = calculateDistance(peerLoc, destLoc);
+                if (peerDistToDest < selfDistToDest) {
+                    closerPeers.add(peerId);
+                }
+            }
+        }
+
+        return Collections.unmodifiableList(closerPeers);
+    }
+
+    public boolean isNeighborCloser(String neighborPeerId, String destinationPeerId) {
+        GeoPoint destLoc = getPeerLocation(destinationPeerId);
+        GeoPoint selfLoc = getSelfLocation();
+        GeoPoint neighborLoc = getPeerLocation(neighborPeerId);
+        if (destLoc == null || selfLoc == null || neighborLoc == null) {
+            return false;
+        }
+        return calculateDistance(neighborLoc, destLoc) < calculateDistance(selfLoc, destLoc);
     }
 
     public RouteComputation calculateRoute(

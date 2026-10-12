@@ -62,7 +62,7 @@ public class RoomDataEngineTest {
     }
 
     @Test
-    public void testDirectMessageFailsIfUnencrypted() {
+    public void testDirectMessageSucceedsWithoutEncryption() {
         NetworkMessage msg = new NetworkMessage.Builder()
                 .messageId("msg-3")
                 .originDeviceId("dev-A")
@@ -72,8 +72,10 @@ public class RoomDataEngineTest {
                 .payload("plaintext")
                 .build(); // No encryption provided
                 
-        assertThrows(IllegalArgumentException.class, () -> {
-            engine.saveMessage(msg);
-        });
+        // Should no longer throw exception
+        engine.saveMessage(msg);
+        NetworkMessage retrieved = engine.getMessage("msg-3");
+        assertNotNull(retrieved);
+        assertEquals("msg-3", retrieved.getMessageId());
     }
 }

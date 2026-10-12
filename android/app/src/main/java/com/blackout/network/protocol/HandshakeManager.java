@@ -11,12 +11,34 @@ import java.util.UUID;
  * Manages the BLACKOUT HELLO and CAPABILITIES handshake protocol.
  */
 public class HandshakeManager {
+    public interface HandshakeListener {
+        void onHandshakeComplete(String peerId);
+    }
+    private HandshakeListener listener;
     private static final String TAG = "HandshakeManager";
     
     private final String localDeviceId;
+    private final ConnectionManager connectionManager;
+    private com.blackout.network.reliability.AntiEntropyEngine antiEntropyEngine;
 
-    public HandshakeManager(String localDeviceId) {
+    public HandshakeManager(String localDeviceId, ConnectionManager connectionManager) {
         this.localDeviceId = localDeviceId;
+        this.connectionManager = connectionManager;
+        this.listener = null;
+    }
+
+    public HandshakeManager(String localDeviceId, ConnectionManager connectionManager, HandshakeListener listener) {
+        this.localDeviceId = localDeviceId;
+        this.connectionManager = connectionManager;
+        this.listener = listener;
+    }
+
+    public void setAntiEntropyEngine(com.blackout.network.reliability.AntiEntropyEngine engine) {
+        this.antiEntropyEngine = engine;
+    }
+
+    public com.blackout.network.reliability.AntiEntropyEngine getAntiEntropyEngine() {
+        return this.antiEntropyEngine;
     }
 
     /**
@@ -52,11 +74,17 @@ public class HandshakeManager {
                         .payloadHash("none")
                         .payload("{\"ack_to\": \"" + msg.getMessageId() + "\"}")
                         .build();
+                // Rename the connection to the true sender's ID!
+                boolean promoted1 = connectionManager.updateConnectionId(peer.getPeerId(), msg.getOriginDeviceId(), localDeviceId);
+                if (!promoted1) return; // Collision lost
                 sendToPeer(peer, ack);
                 Log.i(TAG, "Sent HELLO_ACK to peer: " + msg.getOriginDeviceId());
                 break;
                 
             case HELLO_ACK:
+                // Rename the client connection to the true receiver's ID!
+                boolean promoted2 = connectionManager.updateConnectionId(peer.getPeerId(), msg.getOriginDeviceId(), localDeviceId);
+                if (!promoted2) return; // Collision lost
                 NetworkMessage caps = new NetworkMessage.Builder()
                         .protocolVersion(1)
                         .messageId(UUID.randomUUID().toString())
@@ -94,8 +122,14 @@ public class HandshakeManager {
                 
             case QUEUE_SUMMARY:
                 Log.i(TAG, "Handshake COMPLETE. Peer is fully READY: " + msg.getOriginDeviceId());
-                // In Phase 4, we will use the payload payload to trigger syncs.
-                // Here we would upgrade the PeerInfo status from HANDSHAKING to READY.
+                peer.setReady(true);
+                if (antiEntropyEngine != null) {
+                    java.util.List<NetworkMessage> deltas = antiEntropyEngine.generateSyncDelta(msg, msg.getOriginDeviceId());
+                    for (NetworkMessage delta : deltas) {
+                        sendToPeer(peer, delta);
+                    }
+                }
+                if (listener != null) listener.onHandshakeComplete(msg.getOriginDeviceId());
                 break;
                 
             default:
@@ -104,15 +138,22 @@ public class HandshakeManager {
     }
 
     private void sendQueueSummary(PeerConnection peer, String destId) {
-        NetworkMessage queueSummary = new NetworkMessage.Builder()
-                .protocolVersion(1)
-                .messageId(UUID.randomUUID().toString())
-                .originDeviceId(localDeviceId)
-                .destinationDeviceId(destId)
-                .messageType(MessageType.QUEUE_SUMMARY)
-                .payloadHash("none")
-                .payload("{\"known_messages\": []}") // Dummy empty queue for now
-                .build();
+        NetworkMessage queueSummary;
+        if (antiEntropyEngine != null) {
+            queueSummary = antiEntropyEngine.createQueueSummary(destId);
+        } else {
+            queueSummary = new NetworkMessage.Builder()
+                    .protocolVersion(1)
+                    .messageId(UUID.randomUUID().toString())
+                    .originDeviceId(localDeviceId)
+                    .destinationDeviceId(destId)
+                    .messageType(MessageType.QUEUE_SUMMARY)
+                    .ttl(2)
+                    .hopCount(0)
+                    .payloadHash("summary")
+                    .payload("{\"known_messages\": []}")
+                    .build();
+        }
         sendToPeer(peer, queueSummary);
         Log.i(TAG, "Sent QUEUE_SUMMARY to peer: " + destId);
     }

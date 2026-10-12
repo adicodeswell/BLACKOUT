@@ -1,5 +1,5 @@
 import type { Result } from "../common/Result";
-import type { MessageDto } from "../network/MessageDto";
+import type { MessageDto, DeliveryState } from "../network/MessageDto";
 import type {
   EmergencyReportDto,
   CreateReportRequest,
@@ -20,6 +20,7 @@ import type {
   CreateResourceRequest,
   UpdateResourceRequest,
 } from "./ResourceDto";
+import type { ContactDto } from "./ContactDto";
 import type { DataEvent } from "./DataEvents";
 
 export interface DataEngine {
@@ -27,9 +28,20 @@ export interface DataEngine {
     report: CreateReportRequest
   ): Promise<Result<EmergencyReportDto>>;
 
+  saveContact(contact: ContactDto): Promise<Result<void>>;
+  getContact(peerId: string): Promise<Result<ContactDto>>;
+  getAllContacts(): Promise<Result<ContactDto[]>>;
+  searchContacts?(query: string): Promise<Result<ContactDto[]>>;
+
   saveMessage(message: MessageDto): Promise<Result<void>>;
+  getAllMessages(): Promise<Result<MessageDto[]>>;
+  getRecentMessageIds?(): Promise<Result<string[]>>;
   getMessage(messageId: string): Promise<Result<MessageDto>>;
   getPendingOutbound(): Promise<Result<MessageDto[]>>;
+  updateDeliveryState(
+    messageId: string,
+    state: DeliveryState | string
+  ): Promise<Result<void>>;
   markDelivered(
     messageId: string,
     deliveredAt: number

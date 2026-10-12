@@ -26,11 +26,45 @@ public class FakeNetworkMessageDao implements NetworkMessageDao {
     }
 
     @Override
+    public List<NetworkMessageEntity> getAllMessages() {
+        return new ArrayList<>(store.values());
+    }
+
+    @Override
     public void updateDeliveryState(String id, String state, long time) {
         NetworkMessageEntity e = store.get(id);
         if (e != null) {
             e.deliveryState = state;
             e.deliveredAt = time;
         }
+    }
+
+    @Override
+    public List<String> getRecentMessageIds() {
+        return new ArrayList<>(store.keySet());
+    }
+
+    @Override
+    public List<NetworkMessageEntity> getSyncableMessagesForPeer(String peerId) {
+        List<NetworkMessageEntity> list = new ArrayList<>();
+        for (NetworkMessageEntity e : store.values()) {
+            if ("REPORT".equals(e.messageType) || "HAZARD".equals(e.messageType) ||
+                "RESOURCE".equals(e.messageType) || "BROADCAST".equals(e.messageType) ||
+                (peerId != null && peerId.equals(e.destinationDeviceId))) {
+                list.add(e);
+            }
+        }
+        return list;
+    }
+
+    @Override
+    public List<NetworkMessageEntity> getMessagesSince(long timestamp) {
+        List<NetworkMessageEntity> list = new ArrayList<>();
+        for (NetworkMessageEntity e : store.values()) {
+            if (e.createdAt > timestamp) {
+                list.add(e);
+            }
+        }
+        return list;
     }
 }

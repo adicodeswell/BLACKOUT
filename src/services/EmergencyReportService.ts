@@ -1,0 +1,230 @@
+import type { DataEngine } from "../contracts/data/DataEngine";
+import type { GeoEngine } from "../contracts/geo/GeoEngine";
+import type { NetworkEngine } from "../contracts/network/NetworkEngine";
+import type {
+  CreateReportRequest,
+  EmergencyReportDto,
+  Severity,
+} from "../contracts/data/EmergencyReport";
+import type { LocationDto } from "../contracts/geo/LocationDto";
+import type { MessageDto, DeliveryHandle, MessagePriority } from "../contracts/network/MessageDto";
+import type { Result } from "../contracts/common/Result";
+import type { BlackoutError } from "../contracts/common/BlackoutError";
+
+export interface CreateEmergencyReportSubmission {
+  request: CreateReportRequest;
+  attachLocation?: boolean;
+}
+
+export interface EmergencyReportSubmissionResult {
+  localReport: EmergencyReportDto;
+  location?: LocationDto;
+  locationError?: BlackoutError;
+  deliveryHandle?: DeliveryHandle;
+  broadcastAttempted: boolean;
+  networkError?: BlackoutError;
+}
+
+function mapSeverityToPriority(severity: Severity): MessagePriority {
+  switch (severity) {
+    case "CRITICAL":
+      return "CRITICAL_EMERGENCY";
+    case "HIGH":
+      return "HIGH";
+    case "MEDIUM":
+      return "NORMAL";
+    case "LOW":
+    case "UNKNOWN":
+    default:
+      return "LOW";
+  }
+}
+
+export class EmergencyReportService {
+  constructor(
+    private readonly dataEngine: DataEngine,
+    private readonly geoEngine: GeoEngine,
+    private readonly networkEngine: NetworkEngine
+  ) {
+    // Listen for incoming Emergency Reports and save them to the local database
+    this.networkEngine.subscribe(async (event) => {
+      if (event.type === 'MESSAGE_RECEIVED') {
+        const msg = event.message;
+        if (msg.message_type === "ACK" && msg.payload) {
+          const ackTo = (msg.payload as any).ack_to;
+          if (ackTo) {
+             this.dataEngine.getMessage(ackTo).then((res) => {
+                if (res.ok && res.data) {
+                  // Only mark as DELIVERED if it's a DIRECT message and the ACK is from the intended recipient.
+                  // Broadcasts do not get a blanket "DELIVERED" state from a single arbitrary peer's ACK.
+                  if (res.data.destination_device_id && res.data.destination_device_id === msg.origin_device_id) {
+                    this.dataEngine.markDelivered(ackTo, Date.now()).catch(() => {});
+                  }
+                }
+             });
+          }
+        }
+
+        if (msg.message_type === 'REPORT' && msg.payload) {
+          try {
+            const reportPayload = msg.payload as any;
+            const reportId = reportPayload.report_id || msg.message_id;
+            
+            const existing = await this.dataEngine.getIncident(reportId);
+            if (!existing.ok) {
+                await this.dataEngine.createReport(reportPayload);
+            }
+            if (reportPayload.location && msg.origin_device_id && this.geoEngine.updatePeerLocation) {
+              this.geoEngine.updatePeerLocation(msg.origin_device_id, reportPayload.location).catch(() => {});
+            }
+            
+            // Preserve TTL and hop_count for storage
+            const savedMsg = { ...msg, ttl: Math.max(0, msg.ttl - 1), hop_count: msg.hop_count + 1 };
+            await this.dataEngine.saveMessage(savedMsg);
+            
+            // Send ACK back only after durable persistence succeeds
+            if (msg.origin_device_id) {
+                const ackMsg: MessageDto = {
+                  protocol_version: 1,
+                  message_id: "ack_" + msg.message_id,
+                  origin_device_id: (this.networkEngine as any).localNodeId || "unknown",
+                  destination_device_id: msg.origin_device_id,
+                  message_type: "ACK",
+                  created_at: Date.now(),
+                  ttl: msg.ttl > 0 ? msg.ttl : 15,
+                  hop_count: 0,
+                  priority: "NORMAL",
+                  payload_hash: "",
+                  payload: { ack_to: msg.message_id },
+                  signature: ""
+                };
+                this.networkEngine.send(ackMsg);
+            }
+          } catch (e) {
+            console.error('Failed to save incoming mesh report', e);
+          }
+        }
+
+        if (msg.message_type === 'SYNC' && msg.payload) {
+          try {
+            const syncPayload = msg.payload as any;
+            const messages = Array.isArray(syncPayload.sync_messages) ? syncPayload.sync_messages : [syncPayload];
+            for (const item of messages) {
+              if (item.message_type === 'REPORT' && item.payload) {
+                const reportPayload = item.payload;
+                const reportId = reportPayload.report_id || item.message_id;
+                const existing = await this.dataEngine.getIncident(reportId);
+                if (!existing.ok) {
+                  await this.dataEngine.createReport(reportPayload);
+                }
+                if (reportPayload.location && item.origin_device_id && this.geoEngine.updatePeerLocation) {
+                  this.geoEngine.updatePeerLocation(item.origin_device_id, reportPayload.location).catch(() => {});
+                }
+                await this.dataEngine.saveMessage(item);
+              }
+            }
+          } catch (e) {
+            console.error('Failed to process incoming SYNC report', e);
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Orchestrates the local-first emergency report creation and optional P2P broadcast.
+   */
+  async submitReport(
+    submission: CreateEmergencyReportSubmission
+  ): Promise<Result<EmergencyReportSubmissionResult>> {
+    let capturedLocation: LocationDto | undefined = submission.request.location;
+    let locationError: BlackoutError | undefined = undefined;
+
+    // 1. Optional GPS location acquisition
+    if (submission.attachLocation && !capturedLocation) {
+      const locationResult = await this.geoEngine.getCurrentLocation();
+      if (locationResult.ok) {
+        capturedLocation = locationResult.data;
+      } else {
+        locationError = locationResult.error;
+      }
+      // Note: Location acquisition failure does not block report creation.
+    }
+
+    // Prepare report request with resolved location
+    const finalReportRequest: CreateReportRequest = {
+      ...submission.request,
+      location: capturedLocation ?? submission.request.location,
+      reporter_device_id: (this.networkEngine as any).localNodeId || "unknown-node",
+      created_at: Date.now()
+    } as any;
+
+    // 2. Local persistence in DataEngine (Primary local-first step)
+    const reportResult = await this.dataEngine.createReport(finalReportRequest);
+
+    if (!reportResult.ok) {
+      // Local creation failed; return failure immediately
+      return reportResult;
+    }
+
+    const localReport = reportResult.data;
+    if (capturedLocation && this.geoEngine.updatePeerLocation) {
+      const selfId = (this.networkEngine as any).localNodeId || localReport.reporter_device_id;
+      if (selfId) {
+        this.geoEngine.updatePeerLocation(selfId, capturedLocation).catch(() => {});
+      }
+    }
+    let deliveryHandle: DeliveryHandle | undefined = undefined;
+    let broadcastAttempted = false;
+    let networkError: BlackoutError | undefined = undefined;
+
+    // 3. Network Broadcast (Secondary step — only after local report is persisted)
+    try {
+      const messageEnvelope: MessageDto = {
+        protocol_version: 1,
+        message_id: localReport.report_id,
+        origin_device_id: localReport.reporter_device_id,
+        message_type: "REPORT",
+        created_at: localReport.created_at,
+        ttl: 25, // Saturation initial TTL for emergency report broadcasts (issue1.md)
+        hop_count: 0,
+        priority: mapSeverityToPriority(localReport.severity),
+        payload_hash: "", // Payload hash calculation performed by message serializer/signer
+        payload: localReport,
+        signature: "",
+        _local_delivery_state: "QUEUED",
+      };
+
+      await this.dataEngine.saveMessage(messageEnvelope);
+
+      broadcastAttempted = true;
+      const broadcastResult = await this.networkEngine.broadcast(messageEnvelope);
+
+      if (broadcastResult.ok) {
+        deliveryHandle = broadcastResult.data;
+      } else {
+        networkError = broadcastResult.error;
+      }
+    } catch (err) {
+      networkError = {
+        code: "TRANSPORT",
+        message: err instanceof Error ? err.message : String(err),
+        retryable: true,
+        module: "NETWORK",
+      };
+    }
+
+    // 4. Return success result with localReport (Network failure never invalidates local report)
+    return {
+      ok: true,
+      data: {
+        localReport,
+        location: capturedLocation,
+        locationError,
+        deliveryHandle,
+        broadcastAttempted,
+        networkError,
+      },
+    };
+  }
+}

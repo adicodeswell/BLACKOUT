@@ -16,7 +16,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class PeerConnection {
     private static final String TAG = "PeerConnection";
 
-    private final String peerId;
+    private String peerId;
     private final Socket socket;
     private final ConnectionListener listener;
 
@@ -26,6 +26,7 @@ public class PeerConnection {
     // Queue for messages waiting to be sent out
     private final BlockingQueue<byte[]> outbox = new LinkedBlockingQueue<>();
     private volatile boolean isConnected = false;
+    private volatile boolean isReady = false;
 
     public interface ConnectionListener {
         void onMessageReceived(String peerId, byte[] payload);
@@ -36,6 +37,9 @@ public class PeerConnection {
         this.peerId = peerId;
         this.socket = socket;
         this.listener = listener;
+        try {
+            this.socket.setSoTimeout(15000); // Handshake timeout
+        } catch (Exception ignored) {}
     }
 
     public void start() {
@@ -113,5 +117,28 @@ public class PeerConnection {
 
     public String getPeerId() {
         return peerId;
+    }
+    public boolean isReady() {
+        return isReady;
+    }
+    public void setReady(boolean ready) {
+        this.isReady = ready;
+        try {
+            if (ready) socket.setSoTimeout(0); // Infinite wait after handshake
+        } catch (Exception ignored) {}
+    }
+
+    public void setPeerId(String newId) {
+        this.peerId = newId;
+    }
+
+    private String transportAddress;
+
+    public void setTransportAddress(String address) {
+        this.transportAddress = address;
+    }
+
+    public String getTransportAddress() {
+        return transportAddress;
     }
 }

@@ -10,4 +10,7 @@ export type BlackoutErrorCode =
   | "UNSUPPORTED"
   | "SECURITY"
   | "CANCELLED"
-  | "NOT_IMPLEMENTED";
+  | "NOT_IMPLEMENTED"
+  | "DB_ERROR"
+  | "CONNECT_FAILED"
+  | "PERMISSION_DENIED";

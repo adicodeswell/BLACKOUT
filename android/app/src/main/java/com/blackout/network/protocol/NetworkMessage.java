@@ -40,13 +40,14 @@ public class NetworkMessage {
         private String destinationDeviceId = null;
         private MessageType messageType;
         private long createdAt = System.currentTimeMillis();
-        private int ttl = 5; // Default time-to-live hops
+        private int ttl = 0;
+        private boolean isTtlSet = false;
         private int hopCount = 0;
         private String priority = "NORMAL";
-        private String payloadHash;
+        private String payloadHash = "";
         private String payload;
         private EncryptionMetadata encryption = null;
-        private String signature;
+        private String signature = "";
 
         public Builder() {}
 
@@ -56,7 +57,7 @@ public class NetworkMessage {
         public Builder destinationDeviceId(String val) { this.destinationDeviceId = val; return this; }
         public Builder messageType(MessageType val) { this.messageType = val; return this; }
         public Builder createdAt(long val) { this.createdAt = val; return this; }
-        public Builder ttl(int val) { this.ttl = val; return this; }
+        public Builder ttl(int val) { this.ttl = val; this.isTtlSet = true; return this; }
         public Builder hopCount(int val) { this.hopCount = val; return this; }
         public Builder priority(String val) { this.priority = val; return this; }
         public Builder payloadHash(String val) { this.payloadHash = val; return this; }
@@ -65,7 +66,34 @@ public class NetworkMessage {
         public Builder signature(String val) { this.signature = val; return this; }
 
         public NetworkMessage build() {
+            if (!isTtlSet) {
+                ttl = getDefaultTtlForType(messageType);
+            }
             return new NetworkMessage(this);
+        }
+    }
+
+    public static int getDefaultTtlForType(MessageType type) {
+        if (type == null) return 5;
+        switch (type) {
+            case REPORT:
+            case HAZARD:
+                return 25; // Maximum local saturation (issue1.md)
+            case DIRECT:
+            case ACK:
+                return 15; // Fast intra-city routing (issue1.md)
+            case HELLO:
+            case HELLO_ACK:
+            case CAPABILITIES:
+            case CAPABILITIES_ACK:
+            case QUEUE_SUMMARY:
+            case SYNC:
+                return 2;  // Strictly local neighbor discovery/exchange (issue1.md)
+            case RESOURCE:
+            case BROADCAST:
+                return 20;
+            default:
+                return 5;
         }
     }
 

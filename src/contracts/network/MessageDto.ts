@@ -38,6 +38,7 @@ export interface MessageDto {
   payload: unknown;
   encryption?: MessageEncryption;
   signature: string;
+  _local_delivery_state?: DeliveryState;
 }
 
 export type DeliveryState =
@@ -61,4 +62,5 @@ export interface DeliveryStatus {
 export interface DeliveryHandle {
   message_id: string;
   accepted_at: number;
+  status?: "SENT" | "QUEUED";
 }

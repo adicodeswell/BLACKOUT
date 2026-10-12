@@ -9,7 +9,6 @@ export interface NetworkEngine {
 
   discoverPeers(): Promise<Result<PeerDto[]>>;
   getPeers(): Promise<Result<PeerDto[]>>;
-
   connect(peerId: string): Promise<Result<void>>;
   disconnect(peerId: string): Promise<Result<void>>;
 

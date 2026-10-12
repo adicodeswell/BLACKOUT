@@ -17,9 +17,21 @@ public interface NetworkMessageDao {
     @Query("SELECT * FROM network_messages WHERE messageId = :id")
     NetworkMessageEntity findById(String id);
 
+    @Query("SELECT * FROM network_messages ORDER BY createdAt ASC")
+    List<NetworkMessageEntity> getAllMessages();
+
     @Query("SELECT * FROM network_messages WHERE deliveryState = 'QUEUED' ORDER BY createdAt ASC")
     List<NetworkMessageEntity> findPendingOutbound();
 
     @Query("UPDATE network_messages SET deliveryState = :state, deliveredAt = :time WHERE messageId = :id")
     void updateDeliveryState(String id, String state, long time);
+
+    @Query("SELECT messageId FROM network_messages ORDER BY createdAt DESC LIMIT 100")
+    List<String> getRecentMessageIds();
+
+    @Query("SELECT * FROM network_messages WHERE messageType IN ('REPORT', 'HAZARD', 'RESOURCE', 'BROADCAST') OR destinationDeviceId = :peerId ORDER BY createdAt ASC")
+    List<NetworkMessageEntity> getSyncableMessagesForPeer(String peerId);
+
+    @Query("SELECT * FROM network_messages WHERE createdAt > :timestamp ORDER BY createdAt ASC")
+    List<NetworkMessageEntity> getMessagesSince(long timestamp);
 }

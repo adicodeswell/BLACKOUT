@@ -18,10 +18,29 @@ public class DatabaseMigrations {
     };
 
     /**
+     * Migration: Upgrading database from Version 2 to Version 3.
+     * Creates the persistent contacts table.
+     */
+    public static final Migration MIGRATION_2_3 = new Migration(2, 3) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("CREATE TABLE IF NOT EXISTS contacts ("
+                    + "peerId TEXT NOT NULL PRIMARY KEY, "
+                    + "name TEXT NOT NULL, "
+                    + "transport TEXT NOT NULL, "
+                    + "transportAddress TEXT, "
+                    + "lastSeenAt INTEGER NOT NULL, "
+                    + "isFavorite INTEGER NOT NULL DEFAULT 0, "
+                    + "customNickname TEXT)");
+        }
+    };
+
+    /**
      * Array of all registered migrations.
      * RoomDataEngine will apply these sequentially to prevent data loss.
      */
     public static final Migration[] ALL_MIGRATIONS = new Migration[]{
-            MIGRATION_1_2
+            MIGRATION_1_2,
+            MIGRATION_2_3
     };
 }

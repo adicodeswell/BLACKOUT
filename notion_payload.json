@@ -1,0 +1,88 @@
+{
+  "parent": { "type": "page_id", "page_id": "3edfc925-a030-80b7-a182-d30be07e24ea" },
+  "properties": {
+    "title": { "title": [{ "type": "text", "text": { "content": "Frontend Features & Mocks List" } }] }
+  },
+  "children": [
+    {
+      "object": "block",
+      "type": "heading_1",
+      "heading_1": { "rich_text": [{ "type": "text", "text": { "content": "Planned Features (Backend & System)" } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Data Engine: SQLite-based local-first storage for Incidents, Resources, and Evidences." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Network Engine: BLE & WiFi Direct P2P Mesh Networking, Anti-Entropy Sync, and Direct Messaging." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Geo Engine: Offline MapLibre integration, A* Routing, and hazard zone calculation." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "AI Engine: On-device Rule-based/Heuristic evaluation for emergency severity and confidence." } }] }
+    },
+    {
+      "object": "block",
+      "type": "heading_1",
+      "heading_1": { "rich_text": [{ "type": "text", "text": { "content": "Implemented Frontend Features" } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Home Dashboard (HomeScreen): Overall network status, node ID, and recent incidents feed." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Interactive Map (MapScreen): MapLibre GL implementation with markers for incidents and resources." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Emergency Reporting (EmergencyReportScreen): Multi-step form for reporting medical, fire, or infrastructure emergencies." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Peer Discovery (PeersScreen / PeopleScreen): View connected devices and signal strength." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Direct Messaging (DirectMessageScreen): P2P chat interface for offline peer-to-peer comms." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Resource Management (ResourcesScreen & AddResourceScreen): Add and locate offline supplies." } }] }
+    },
+    {
+      "object": "block",
+      "type": "heading_1",
+      "heading_1": { "rich_text": [{ "type": "text", "text": { "content": "Mocked & Hardcoded Implementations" } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "DevDataEngine: Seeded with mock incident and resource data for UI testing and iOS fallback." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "DevGeoEngine: Hardcoded mock hazards and San Francisco Bay Area bounds." } }] }
+    },
+    {
+      "object": "block",
+      "type": "bulleted_list_item",
+      "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": "Profile Initialization: Hardcoded \"Local Device Initialization\" text and mocked device identities for UI layout." } }] }
+    }
+  ]
+}

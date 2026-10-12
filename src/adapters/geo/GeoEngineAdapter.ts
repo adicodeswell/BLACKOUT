@@ -70,4 +70,25 @@ export class GeoEngineAdapter implements GeoEngine {
   ): Promise<Result<NearbyItemDto[]>> {
     return this.engine.findNearby(type, location, radiusM);
   }
+
+  updatePeerLocation(peerId: string, location: LocationDto): Promise<Result<void>> {
+    if (this.engine.updatePeerLocation) {
+      return this.engine.updatePeerLocation(peerId, location);
+    }
+    return Promise.resolve({ ok: true, data: undefined });
+  }
+
+  getPeerLocation(peerId: string): Promise<Result<LocationDto | null>> {
+    if (this.engine.getPeerLocation) {
+      return this.engine.getPeerLocation(peerId);
+    }
+    return Promise.resolve({ ok: true, data: null });
+  }
+
+  filterCloserNeighbors(destinationPeerId: string, candidatePeerIds: string[]): Promise<Result<string[]>> {
+    if (this.engine.filterCloserNeighbors) {
+      return this.engine.filterCloserNeighbors(destinationPeerId, candidatePeerIds);
+    }
+    return Promise.resolve({ ok: true, data: candidatePeerIds });
+  }
 }

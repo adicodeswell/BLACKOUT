@@ -13,4 +13,6 @@ export interface PeerDto {
   connection_state: PeerConnectionState;
   last_seen_at: number;
   capabilities: string[];
+  name?: string;
+  transport_address?: string;
 }

@@ -58,8 +58,8 @@ public class MessageSerializer {
                 .createdAt(json.getLong("created_at"))
                 .ttl(json.getInt("ttl"))
                 .hopCount(json.getInt("hop_count"))
-                .priority(json.getString("priority"))
-                .payloadHash(json.getString("payload_hash"))
+                .priority(json.optString("priority", "NORMAL"))
+                .payloadHash(json.optString("payload_hash", ""))
                 .payload(json.get("payload").toString());
 
         if (json.has("destination_device_id")) {

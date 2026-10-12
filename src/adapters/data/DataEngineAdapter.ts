@@ -21,6 +21,7 @@ import type {
   CreateResourceRequest,
   UpdateResourceRequest,
 } from "../../contracts/data/ResourceDto";
+import type { ContactDto } from "../../contracts/data/ContactDto";
 import type { DataEvent } from "../../contracts/data/DataEvents";
 
 export class DataEngineAdapter implements DataEngine {
@@ -28,10 +29,33 @@ export class DataEngineAdapter implements DataEngine {
     private readonly engine: DataEngine
   ) {}
 
+  saveContact(contact: ContactDto): Promise<Result<void>> {
+    return this.engine.saveContact(contact);
+  }
+
+  getContact(peerId: string): Promise<Result<ContactDto>> {
+    return this.engine.getContact(peerId);
+  }
+
+  getAllContacts(): Promise<Result<ContactDto[]>> {
+    return this.engine.getAllContacts();
+  }
+
+  searchContacts(query: string): Promise<Result<ContactDto[]>> {
+    if (this.engine.searchContacts) {
+      return this.engine.searchContacts(query);
+    }
+    return Promise.resolve({ ok: true, data: [] });
+  }
+
   createReport(
     request: CreateReportRequest
   ): Promise<Result<EmergencyReportDto>> {
     return this.engine.createReport(request);
+  }
+
+  getAllMessages(): Promise<Result<MessageDto[]>> {
+    return this.engine.getAllMessages();
   }
 
   saveMessage(message: MessageDto): Promise<Result<void>> {
@@ -44,6 +68,13 @@ export class DataEngineAdapter implements DataEngine {
 
   getPendingOutbound(): Promise<Result<MessageDto[]>> {
     return this.engine.getPendingOutbound();
+  }
+
+  updateDeliveryState(
+    messageId: string,
+    state: string
+  ): Promise<Result<void>> {
+    return this.engine.updateDeliveryState(messageId, state);
   }
 
   markDelivered(

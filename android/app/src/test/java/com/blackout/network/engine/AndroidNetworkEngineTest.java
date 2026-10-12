@@ -18,7 +18,7 @@ public class AndroidNetworkEngineTest {
         // We use nulls or stubs for hardware. The test verifies it doesn't crash 
         // and correctly updates state when hardware is missing/mocked.
         BleDiscoveryEngine mockBle = new BleDiscoveryEngine(null);
-        WifiDirectManager mockWifi = new WifiDirectManager(null, null);
+        WifiDirectManager mockWifi = new WifiDirectManager(null, null, null);
         ConnectionManager connManager = new ConnectionManager();
         
         // Mock server on an ephemeral port

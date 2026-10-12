@@ -9,6 +9,9 @@ import com.blackout.network.transport.ConnectionManager;
 import com.blackout.network.transport.NetworkServer;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import android.net.wifi.p2p.WifiP2pDevice;
 
 /**
  * The master class that ties the OS hardware scanners (BLE/WiFi) to our
@@ -47,23 +50,30 @@ public class AndroidNetworkEngine {
         try {
             // 1. Start listening for incoming Wi-Fi Direct socket connections
             networkServer.start();
-            
-            // 2. Start the BLE passive discovery beacons
-            if (bleEngine != null) {
-                bleEngine.start();
-            }
-            
-            // 3. Initiate Wi-Fi direct searches
-            if (wifiManager != null) {
-                wifiManager.discoverPeers();
-            }
-            
-            isRunning = true;
-            Log.i(TAG, "Network Engine successfully started.");
-            
         } catch (IOException e) {
             Log.e(TAG, "Failed to start the Network Server", e);
         }
+
+        // 2. Start the BLE passive discovery beacons
+        try {
+            if (bleEngine != null) {
+                bleEngine.start();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start the BLE Engine (Bluetooth may be disabled)", e);
+        }
+
+        // 3. Initiate Wi-Fi direct searches
+        try {
+            if (wifiManager != null) {
+                wifiManager.discoverPeers();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to initiate Wi-Fi Direct discovery", e);
+        }
+        
+        isRunning = true;
+        Log.i(TAG, "Network Engine successfully started.");
     }
 
     public synchronized void stop() {
@@ -72,10 +82,24 @@ public class AndroidNetworkEngine {
         Log.i(TAG, "Stopping Android Network Engine...");
         
         if (bleEngine != null) bleEngine.stop();
+        if (wifiManager != null) wifiManager.stop();
         if (networkServer != null) networkServer.stop();
         if (connectionManager != null) connectionManager.disconnectAll();
         
         isRunning = false;
+    }
+
+    public List<WifiP2pDevice> getWifiPeers() {
+        if (wifiManager != null) return wifiManager.getDiscoveredPeers();
+        return new ArrayList<>();
+    }
+
+    public ConnectionManager getConnectionManager() {
+        return connectionManager;
+    }
+
+    public WifiDirectManager getWifiDirectManager() {
+        return wifiManager;
     }
 
     public boolean isRunning() {

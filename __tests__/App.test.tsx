@@ -11,6 +11,8 @@ jest.mock('react-native', () => {
   return RN;
 });
 
-it('renders correctly', () => {
-  renderer.create(<App />);
+it('renders correctly', async () => {
+  await React.act(async () => {
+    renderer.create(<App />);
+  });
 });

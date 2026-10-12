@@ -22,4 +22,8 @@ export type DataEvent =
   | {
       type: "CONFIDENCE_UPDATED";
       confidence: ConfidenceStateDto;
+    }
+  | {
+      type: "CONTACT_UPDATED";
+      peer_id: string;
     };

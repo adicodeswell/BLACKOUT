@@ -4,6 +4,7 @@ import android.util.Log;
 import com.blackout.network.transport.ConnectionManager;
 import com.blackout.network.transport.PeerConnection;
 import org.json.JSONException;
+import com.blackout.network.reliability.MessageDeduplicator;
 
 /**
  * The Receive Pipeline. Parses incoming bytes, routes handshakes back to the HandshakeManager,
@@ -15,15 +16,34 @@ public class MessageHandler implements PeerConnection.ConnectionListener {
     private final ConnectionManager connectionManager;
     private final HandshakeManager handshakeManager;
     private final AppMessageListener appListener;
+    private final MessageDeduplicator deduplicator;
+    private com.blackout.network.reliability.AntiEntropyEngine antiEntropyEngine;
 
     public interface AppMessageListener {
-        void onApplicationMessage(NetworkMessage message);
+        default void onApplicationMessage(NetworkMessage message) {}
+        default void onApplicationMessage(String sourcePeerId, NetworkMessage message) {
+            onApplicationMessage(message);
+        }
+        void onPeerDisconnected(String peerId);
     }
 
     public MessageHandler(ConnectionManager connectionManager, HandshakeManager handshakeManager, AppMessageListener appListener) {
+        this(connectionManager, handshakeManager, new MessageDeduplicator(), appListener);
+    }
+
+    public MessageHandler(ConnectionManager connectionManager, HandshakeManager handshakeManager, MessageDeduplicator deduplicator, AppMessageListener appListener) {
         this.connectionManager = connectionManager;
         this.handshakeManager = handshakeManager;
+        this.deduplicator = deduplicator != null ? deduplicator : new MessageDeduplicator();
         this.appListener = appListener;
+    }
+
+    public void setAntiEntropyEngine(com.blackout.network.reliability.AntiEntropyEngine engine) {
+        this.antiEntropyEngine = engine;
+    }
+
+    public com.blackout.network.reliability.AntiEntropyEngine getAntiEntropyEngine() {
+        return this.antiEntropyEngine;
     }
 
     @Override
@@ -31,6 +51,13 @@ public class MessageHandler implements PeerConnection.ConnectionListener {
         try {
             NetworkMessage msg = MessageSerializer.deserialize(payload);
             MessageValidator.validate(msg);
+
+            // Mesh Routing Loop Prevention
+            if (deduplicator.isDuplicate(msg.getMessageId())) {
+                Log.d(TAG, "Dropped duplicate mesh message: " + msg.getMessageId());
+                return;
+            }
+            deduplicator.recordMessage(msg.getMessageId());
 
             MessageType type = msg.getMessageType();
             
@@ -43,10 +70,17 @@ public class MessageHandler implements PeerConnection.ConnectionListener {
                 if (peer != null) {
                     handshakeManager.processHandshakeMessage(msg, peer);
                 }
+            } else if (type == MessageType.SYNC) {
+                // Route anti-entropy synchronization batches
+                if (antiEntropyEngine != null) {
+                    antiEntropyEngine.handleIncomingSync(msg, appListener, peerId);
+                } else if (appListener != null) {
+                    appListener.onApplicationMessage(peerId, msg);
+                }
             } else {
-                // Route application-level messages (REPORT, HAZARD, etc) upward
+                // Route application-level messages (REPORT, DIRECT, ACK, HAZARD, etc) upward
                 if (appListener != null) {
-                    appListener.onApplicationMessage(msg);
+                    appListener.onApplicationMessage(peerId, msg);
                 }
             }
         } catch (MessageValidator.ValidationException | JSONException e) {
@@ -58,5 +92,8 @@ public class MessageHandler implements PeerConnection.ConnectionListener {
     public void onDisconnected(String peerId) {
         Log.i(TAG, "Peer disconnected in MessageHandler: " + peerId);
         connectionManager.removeConnection(peerId);
+        if (appListener != null) {
+            appListener.onPeerDisconnected(peerId);
+        }
     }
 }
