@@ -39,10 +39,12 @@ export class NativeNetworkEngineAdapter implements NetworkEngine {
         permissions.push('android.permission.POST_NOTIFICATIONS' as any);
       }
       const granted = await PermissionsAndroid.requestMultiple(permissions);
-      return Object.values(granted).every(status => status === PermissionsAndroid.RESULTS.GRANTED);
+      const fineLoc = granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
+      const nearbyWifi = granted['android.permission.NEARBY_WIFI_DEVICES'] === PermissionsAndroid.RESULTS.GRANTED;
+      return fineLoc || nearbyWifi || Object.values(granted).some(status => status === PermissionsAndroid.RESULTS.GRANTED);
     } catch (err) {
       console.warn('Failed to request permissions', err);
-      return false;
+      return true; // Attempt to proceed even if request fails
     }
   }
 
