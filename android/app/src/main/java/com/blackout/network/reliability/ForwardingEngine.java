@@ -22,6 +22,7 @@ public class ForwardingEngine {
     private final MessageDeduplicator deduplicator;
     private com.blackout.data.RoomDataEngine dataEngine;
     private OfflineGeoEngine geoEngine;
+    private final java.util.Set<String> localAliases = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
 
     public ForwardingEngine(String localDeviceId, OutgoingSendManager sendManager, MessageDeduplicator deduplicator) {
         this.localDeviceId = localDeviceId;
@@ -34,6 +35,20 @@ public class ForwardingEngine {
         this.sendManager = sendManager;
         this.deduplicator = deduplicator;
         this.geoEngine = geoEngine;
+    }
+
+    public void addLocalAlias(String alias) {
+        if (alias != null && !alias.isEmpty()) {
+            localAliases.add(alias);
+            localAliases.add(alias.toLowerCase());
+            localAliases.add(alias.toUpperCase());
+        }
+    }
+
+    public boolean isLocalDestination(String id) {
+        if (id == null || id.isEmpty()) return false;
+        if (localDeviceId != null && id.equalsIgnoreCase(localDeviceId)) return true;
+        return localAliases.contains(id) || localAliases.contains(id.toLowerCase()) || localAliases.contains(id.toUpperCase());
     }
 
     public void setGeoEngine(OfflineGeoEngine geoEngine) {
@@ -55,7 +70,7 @@ public class ForwardingEngine {
         if (msg == null) return false;
 
         // 1. Don't forward our own messages back out
-        if (msg.getOriginDeviceId() != null && msg.getOriginDeviceId().equals(localDeviceId)) return false;
+        if (msg.getOriginDeviceId() != null && isLocalDestination(msg.getOriginDeviceId())) return false;
         
         // 2. TTL (Time To Live) exceeded, drop it to prevent infinite loops
         if (msg.getHopCount() >= msg.getTtl()) {
@@ -63,8 +78,8 @@ public class ForwardingEngine {
             return false;
         }
         
-        // 3. If it was specifically for us, we don't need to forward it further
-        if (localDeviceId != null && localDeviceId.equals(msg.getDestinationDeviceId())) return false;
+        // 3. If it was specifically for us (UUID or local MAC/transport alias), we don't need to forward it further
+        if (isLocalDestination(msg.getDestinationDeviceId())) return false;
 
         return true;
     }

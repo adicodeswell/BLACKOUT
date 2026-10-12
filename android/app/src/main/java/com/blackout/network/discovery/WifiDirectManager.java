@@ -24,6 +24,7 @@ public class WifiDirectManager {
     public interface DiscoveryCallback {
         void onPeersDiscovered(List<WifiP2pDevice> peers);
         void onConnectionStateChanged(String deviceAddress, State state);
+        default void onThisDeviceChanged(WifiP2pDevice thisDevice) {}
     }
 
     public interface ConnectionCallback {
@@ -204,6 +205,9 @@ public class WifiDirectManager {
                     if (thisDevice != null && thisDevice.deviceAddress != null) {
                         thisDeviceAddress = thisDevice.deviceAddress;
                         Log.i(TAG, "Discovered local Wi-Fi P2P device address: " + thisDeviceAddress);
+                        if (discoveryCallback != null) {
+                            discoveryCallback.onThisDeviceChanged(thisDevice);
+                        }
                     }
                 } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION.equals(action)) {
                     if (p2pManager != null && currentState != State.CONNECTING) {

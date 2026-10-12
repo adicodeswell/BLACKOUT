@@ -99,4 +99,47 @@ public class ConnectionManagerTest {
         assertEquals(conn, connectionManager.getConnection("nodeA"));
         assertEquals(conn, connectionManager.getConnection("temp-123"));
     }
+
+    @Test
+    public void testLocalAlias_RecognizesHardwareMacAddressAndCaseInsensitive() {
+        connectionManager.setLocalDeviceId("f81d4fae-7dec-11d0-a765-00a0c91e6bf6");
+        connectionManager.registerLocalAlias("4A:5E:3B:11:22:33");
+
+        // Canonical UUID is recognized as local
+        assertTrue("Canonical UUID must be recognized as local destination",
+                connectionManager.isLocalDestination("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"));
+
+        // Uppercase and lowercase MAC addresses must be recognized as local
+        assertTrue("Uppercase MAC must be recognized as local destination",
+                connectionManager.isLocalDestination("4A:5E:3B:11:22:33"));
+        assertTrue("Lowercase MAC must be recognized as local destination",
+                connectionManager.isLocalDestination("4a:5e:3b:11:22:33"));
+
+        // Unrelated address is not local
+        assertFalse("Unrelated MAC should not be recognized as local",
+                connectionManager.isLocalDestination("AA:BB:CC:DD:EE:FF"));
+    }
+
+    @Test
+    public void testRemoteAlias_ResolvesMacAddressToCanonicalUuidCaseInsensitively() {
+        String canonicalUuid = "b0b0b0b0-0000-1111-2222-333344445555";
+        String hardwareMac = "4A:5E:3B:11:22:33";
+
+        DummyPeerConnection conn = new DummyPeerConnection(canonicalUuid, true);
+        conn.setTransportAddress(hardwareMac);
+        connectionManager.addConnection(conn);
+        connectionManager.registerAlias(hardwareMac, canonicalUuid);
+
+        // Resolution by exact MAC
+        assertEquals(canonicalUuid, connectionManager.resolveCanonicalId("4A:5E:3B:11:22:33"));
+        // Resolution by lowercase MAC
+        assertEquals(canonicalUuid, connectionManager.resolveCanonicalId("4a:5e:3b:11:22:33"));
+
+        // Connection retrieval by lowercase MAC
+        assertEquals(conn, connectionManager.getConnection("4a:5e:3b:11:22:33"));
+        assertEquals(conn, connectionManager.getReadyConnection("4a:5e:3b:11:22:33"));
+
+        // Reverse lookup
+        assertEquals("4a:5e:3b:11:22:33", connectionManager.resolveTransportAddress(canonicalUuid).toLowerCase());
+    }
 }

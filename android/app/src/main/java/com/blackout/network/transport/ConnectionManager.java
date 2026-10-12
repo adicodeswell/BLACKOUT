@@ -15,11 +15,41 @@ public class ConnectionManager {
     // Thread-safe map of Peer ID -> Active Connection
     private final ConcurrentHashMap<String, PeerConnection> connections = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> aliases = new ConcurrentHashMap<>();
+    private String localDeviceId;
+    private final ConcurrentHashMap<String, Boolean> localAliases = new ConcurrentHashMap<>();
+
+    public synchronized void setLocalDeviceId(String localDeviceId) {
+        this.localDeviceId = localDeviceId;
+    }
+
+    public synchronized String getLocalDeviceId() {
+        return this.localDeviceId;
+    }
+
+    public synchronized void registerLocalAlias(String alias) {
+        if (alias != null && !alias.isEmpty()) {
+            localAliases.put(alias, Boolean.TRUE);
+            localAliases.put(alias.toLowerCase(), Boolean.TRUE);
+            localAliases.put(alias.toUpperCase(), Boolean.TRUE);
+        }
+    }
+
+    public synchronized boolean isLocalDestination(String destId) {
+        if (destId == null || destId.isEmpty()) {
+            return true; // Broadcast / flood messages are delivered locally
+        }
+        if (localDeviceId != null && destId.equalsIgnoreCase(localDeviceId)) {
+            return true;
+        }
+        return localAliases.containsKey(destId) ||
+               localAliases.containsKey(destId.toLowerCase()) ||
+               localAliases.containsKey(destId.toUpperCase());
+    }
 
     /**
      * Registers and starts a new peer connection.
      */
-        public synchronized boolean updateConnectionId(String oldId, String newId, String localDeviceId) {
+    public synchronized boolean updateConnectionId(String oldId, String newId, String localDeviceId) {
         PeerConnection conn = connections.get(oldId);
         if (conn == null) return false;
         
@@ -51,10 +81,9 @@ public class ConnectionManager {
         connections.remove(oldId);
         conn.setPeerId(newId);
         connections.put(newId, conn);
-        aliases.put(oldId, newId);
+        registerAlias(oldId, newId);
         if (conn.getTransportAddress() != null) {
-            aliases.put(conn.getTransportAddress(), newId);
-            aliases.put(newId, conn.getTransportAddress());
+            registerAlias(conn.getTransportAddress(), newId);
         }
         Log.i(TAG, "Renamed connection " + oldId + " to " + newId);
         return true;
@@ -105,9 +134,15 @@ public class ConnectionManager {
     }
 
     public synchronized PeerConnection getConnection(String peerId) {
+        if (peerId == null) return null;
         PeerConnection conn = connections.get(peerId);
-        if (conn == null && aliases.containsKey(peerId)) {
-            return connections.get(aliases.get(peerId));
+        if (conn == null) {
+            String canonical = aliases.get(peerId);
+            if (canonical == null) canonical = aliases.get(peerId.toLowerCase());
+            if (canonical == null) canonical = aliases.get(peerId.toUpperCase());
+            if (canonical != null) {
+                conn = connections.get(canonical);
+            }
         }
         return conn;
     }
@@ -115,6 +150,8 @@ public class ConnectionManager {
     public synchronized void registerAlias(String aliasOrTransport, String canonicalId) {
         if (aliasOrTransport != null && canonicalId != null) {
             aliases.put(aliasOrTransport, canonicalId);
+            aliases.put(aliasOrTransport.toLowerCase(), canonicalId);
+            aliases.put(aliasOrTransport.toUpperCase(), canonicalId);
             aliases.put(canonicalId, aliasOrTransport);
         }
     }
@@ -122,13 +159,19 @@ public class ConnectionManager {
     public synchronized String resolveCanonicalId(String idOrAlias) {
         if (idOrAlias == null) return null;
         if (connections.containsKey(idOrAlias)) return idOrAlias;
-        return aliases.getOrDefault(idOrAlias, idOrAlias);
+        String canonical = aliases.get(idOrAlias);
+        if (canonical != null) return canonical;
+        canonical = aliases.get(idOrAlias.toLowerCase());
+        if (canonical != null) return canonical;
+        canonical = aliases.get(idOrAlias.toUpperCase());
+        if (canonical != null) return canonical;
+        return idOrAlias;
     }
 
     public synchronized String resolveTransportAddress(String canonicalId) {
         if (canonicalId == null) return null;
         for (java.util.Map.Entry<String, String> entry : aliases.entrySet()) {
-            if (entry.getValue().equals(canonicalId) && entry.getKey().contains(":")) {
+            if (entry.getValue().equalsIgnoreCase(canonicalId) && entry.getKey().contains(":")) {
                 return entry.getKey();
             }
         }

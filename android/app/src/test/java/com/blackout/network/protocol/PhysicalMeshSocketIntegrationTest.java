@@ -383,4 +383,64 @@ public class PhysicalMeshSocketIntegrationTest {
         boolean received = messageAfterReconnectLatch.await(5, TimeUnit.SECONDS);
         assertTrue("Node B must receive queued message after socket reconnection", received);
     }
+
+    @Test
+    public void testDirectMessageSentToHardwareMacAddress_SuccessfullyDeliveredToRecipientViaAlias() throws Exception {
+        CountDownLatch handshakeLatch = new CountDownLatch(1);
+        CountDownLatch messageDeliveredLatch = new CountDownLatch(1);
+        final String[] finalRecipientDeliveryId = new String[1];
+
+        // Node B is the recipient with Canonical UUID "uuid-node-b-9999" and hardware Wi-Fi MAC "4A:5E:3B:11:22:33"
+        String uuidB = "uuid-node-b-9999";
+        String macB = "4A:5E:3B:11:22:33";
+
+        nodeB = new TestMeshNode(uuidB, new MessageHandler.AppMessageListener() {
+            @Override
+            public void onApplicationMessage(NetworkMessage message) {
+                // If destination matches self via UUID or local alias:
+                if (nodeB.connectionManager.isLocalDestination(message.getDestinationDeviceId())) {
+                    finalRecipientDeliveryId[0] = message.getDestinationDeviceId();
+                    messageDeliveredLatch.countDown();
+                } else if (nodeB.forwardingEngine.shouldForward(message)) {
+                    nodeB.forwardingEngine.forwardMessage(message);
+                }
+            }
+            @Override
+            public void onPeerDisconnected(String peerId) {}
+        });
+        nodeB.connectionManager.setLocalDeviceId(uuidB);
+        nodeB.connectionManager.registerLocalAlias(macB);
+        nodeB.forwardingEngine.addLocalAlias(macB);
+
+        int portB = nodeB.startServer();
+
+        // Node A discovers Node B by hardware MAC address, connects, and establishes handshake
+        nodeA = new TestMeshNode("uuid-node-a-1111", null);
+        nodeA.connectionManager.setLocalDeviceId("uuid-node-a-1111");
+        nodeA.expectHandshakeWith(uuidB, handshakeLatch);
+
+        PeerConnection clientConn = nodeA.connectTo(macB, portB);
+        clientConn.setTransportAddress(macB);
+        nodeA.connectionManager.registerAlias(macB, clientConn.getPeerId());
+        nodeA.handshakeManager.initiateHandshake(clientConn);
+
+        assertTrue("Handshake must complete", handshakeLatch.await(5, TimeUnit.SECONDS));
+
+        // Node A sends a DIRECT message where destination is stamped with Node B's hardware MAC address
+        NetworkMessage directMsg = new NetworkMessage.Builder()
+                .messageId("msg-mac-destination-001")
+                .originDeviceId("uuid-node-a-1111")
+                .destinationDeviceId(macB)
+                .messageType(MessageType.DIRECT)
+                .payload("{\"text\":\"Hello to MAC\"}")
+                .build();
+
+        // Node A sends direct using MAC address (resolved through alias)
+        boolean sent = nodeA.sendManager.sendDirect(directMsg, macB);
+        assertTrue("Message must be sent over ready connection mapped by alias", sent);
+
+        // Verify Node B received and accepted it as local delivery (not forwarded or dropped)
+        assertTrue("Node B must receive message addressed to its hardware MAC address", messageDeliveredLatch.await(5, TimeUnit.SECONDS));
+        assertEquals(macB, finalRecipientDeliveryId[0]);
+    }
 }

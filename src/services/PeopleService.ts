@@ -48,7 +48,25 @@ export class PeopleService {
     if (event.type === "PEER_CONNECTED" || event.type === "PEER_DISCOVERED") {
       const peer = (event as any).peer;
       const peerId = peer?.peer_id || (event as any).peer_id;
-      const transportAddr = peer?.transport_address;
+      const transportAddr = peer?.transport_address || (event as any).transport_address;
+
+      if (peer) {
+        const existingIdx = this.activePeers.findIndex(
+          (p) => p.peer_id === peerId || (transportAddr && (p.peer_id === transportAddr || p.transport_address === transportAddr))
+        );
+        const updatedPeer: PeerDto = {
+          ...peer,
+          peer_id: peerId,
+          transport_address: transportAddr || (peer as any).transport_address,
+          connection_state: event.type === "PEER_CONNECTED" ? "CONNECTED" : (peer.connection_state || "DISCOVERED"),
+        };
+        if (existingIdx >= 0) {
+          this.activePeers[existingIdx] = updatedPeer;
+        } else {
+          this.activePeers.push(updatedPeer);
+        }
+        this.notifyPeerListeners();
+      }
 
       // Migrate messages if conversation was previously keyed by transport address (e.g. MAC)
       if (
@@ -344,7 +362,7 @@ export class PeopleService {
 
   private async refreshPeers() {
     const res = await this.networkEngine.getPeers();
-    if (res.ok) {
+    if (res.ok && res.data && res.data.length > 0) {
       this.activePeers = res.data;
       this.notifyPeerListeners();
     }
@@ -379,11 +397,12 @@ export class PeopleService {
     
     // Resolve canonical peer ID from alias if known
     let targetDest = targetPeerId;
-    const knownPeer = this.activePeers.find(
-      (p) => p.peer_id === targetPeerId || p.transport_address === targetPeerId
+    const canonicalPeer = this.activePeers.find(
+      (p) => (p.peer_id === targetPeerId || p.transport_address === targetPeerId) &&
+             !p.peer_id.includes(":") && !p.peer_id.startsWith("TEMP-")
     );
-    if (knownPeer && !knownPeer.peer_id.includes(":") && !knownPeer.peer_id.startsWith("TEMP-")) {
-      targetDest = knownPeer.peer_id;
+    if (canonicalPeer) {
+      targetDest = canonicalPeer.peer_id;
     }
 
     const messageDto: MessageDto = {

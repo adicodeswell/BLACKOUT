@@ -46,6 +46,18 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
     private String localDeviceId;
     private com.blackout.network.reliability.ForwardingEngine forwardingEngine;
     private com.blackout.data.RoomDataEngine roomDataEngine;
+    private com.blackout.network.discovery.WifiDirectManager wifiManager;
+
+    private boolean isDestinationSelf(String dest) {
+        if (dest == null || dest.isEmpty()) return false;
+        if (dest.equalsIgnoreCase(localDeviceId)) return true;
+        if (connectionManager != null && connectionManager.isLocalDestination(dest)) return true;
+        if (wifiManager != null) {
+            String myWifi = wifiManager.getThisDeviceAddress();
+            if (myWifi != null && !myWifi.isEmpty() && dest.equalsIgnoreCase(myWifi)) return true;
+        }
+        return false;
+    }
 
     public BlackoutNativeModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -72,6 +84,7 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             DeviceIdentity identity = new DeviceIdentity(ctx);
             localDeviceId = identity.getDeviceId();
             connectionManager = new ConnectionManager();
+            connectionManager.setLocalDeviceId(localDeviceId);
             com.blackout.network.reliability.MessageQueue messageQueue = new com.blackout.network.reliability.MessageQueue();
             outgoingSendManager = new OutgoingSendManager(connectionManager, messageQueue);
             
@@ -90,6 +103,10 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                     // Flush pending offline direct messages and broadcasts
                     try {
                         java.util.List<NetworkMessage> queuedDirect = messageQueue.drainPendingDirect(peerId);
+                        String transport = connectionManager != null ? connectionManager.resolveTransportAddress(peerId) : null;
+                        if (transport != null && !transport.equals(peerId)) {
+                            queuedDirect.addAll(messageQueue.drainPendingDirect(transport));
+                        }
                         for (NetworkMessage m : queuedDirect) {
                             outgoingSendManager.sendDirect(m, peerId);
                         }
@@ -104,6 +121,21 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                     WritableMap event = com.facebook.react.bridge.Arguments.createMap();
                     event.putString("type", "PEER_CONNECTED");
                     event.putString("peer_id", peerId);
+                    String transportAddr = connectionManager != null ? connectionManager.resolveTransportAddress(peerId) : null;
+                    if (transportAddr != null && !transportAddr.equals(peerId)) {
+                        event.putString("transport_address", transportAddr);
+                    }
+                    WritableMap peerMap = com.facebook.react.bridge.Arguments.createMap();
+                    peerMap.putString("peer_id", peerId);
+                    if (transportAddr != null && !transportAddr.equals(peerId)) {
+                        peerMap.putString("transport_address", transportAddr);
+                    }
+                    peerMap.putString("connection_state", "CONNECTED");
+                    peerMap.putInt("signal_strength", 100);
+                    peerMap.putDouble("last_seen_at", (double) System.currentTimeMillis());
+                    peerMap.putString("transport", "WIFI_DIRECT");
+                    event.putMap("peer", peerMap);
+
                     try {
                         getReactApplicationContext().getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("NativeEvent", event);
                     } catch (Exception e) {}
@@ -137,8 +169,8 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                         if (forwardingEngine != null && forwardingEngine.shouldForward(message)) {
                             forwardingEngine.forwardMessage(message, sourcePeerId);
                         }
-                    } else if (dest.equals(localDeviceId)) {
-                        // Directed to this device: final hop reached
+                    } else if (isDestinationSelf(dest)) {
+                        // Directed to this device (either via canonical UUID or transport alias): final hop reached
                         if (message.getMessageType() == MessageType.ACK) {
                             handleIncomingAck(message);
                         } else {
@@ -231,9 +263,21 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
                 }
             });
 
-            WifiDirectManager wifiManager = new WifiDirectManager(wifiP2pManager, channel, ctx);
+            wifiManager = new WifiDirectManager(wifiP2pManager, channel, ctx);
             wifiManager.setLocalDeviceId(localDeviceId);
             wifiManager.setDiscoveryCallback(new WifiDirectManager.DiscoveryCallback() {
+                @Override
+                public void onThisDeviceChanged(android.net.wifi.p2p.WifiP2pDevice thisDevice) {
+                    if (thisDevice != null && thisDevice.deviceAddress != null) {
+                        if (connectionManager != null) {
+                            connectionManager.registerLocalAlias(thisDevice.deviceAddress);
+                        }
+                        if (forwardingEngine != null) {
+                            forwardingEngine.addLocalAlias(thisDevice.deviceAddress);
+                        }
+                        Log.i(TAG, "Registered local Wi-Fi MAC address alias: " + thisDevice.deviceAddress);
+                    }
+                }
                 @Override
                 public void onPeersDiscovered(List<android.net.wifi.p2p.WifiP2pDevice> peers) {
                     try {
@@ -370,6 +414,27 @@ public class BlackoutNativeModule extends ReactContextBaseJavaModule {
             
             // Wait, MessageSerializer expects snake_case for field names. 
             // In a real production app, we'd ensure React Native sends the snake_case keys correctly.
+            String dest = msg.getDestinationDeviceId();
+            if (dest != null && !dest.isEmpty() && connectionManager != null) {
+                String canonical = connectionManager.resolveCanonicalId(dest);
+                if (canonical != null && !canonical.equalsIgnoreCase(dest) && !canonical.startsWith("TEMP-")) {
+                    msg = new NetworkMessage.Builder()
+                        .protocolVersion(msg.getProtocolVersion())
+                        .messageId(msg.getMessageId())
+                        .originDeviceId(msg.getOriginDeviceId())
+                        .destinationDeviceId(canonical)
+                        .messageType(msg.getMessageType())
+                        .createdAt(msg.getCreatedAt())
+                        .ttl(msg.getTtl())
+                        .hopCount(msg.getHopCount())
+                        .priority(msg.getPriority())
+                        .payloadHash(msg.getPayloadHash())
+                        .payload(msg.getPayload())
+                        .signature(msg.getSignature())
+                        .build();
+                }
+            }
+
             boolean sent = false;
             if (msg.getDestinationDeviceId() != null && !msg.getDestinationDeviceId().isEmpty()) {
                 boolean directSuccess = outgoingSendManager.sendDirect(msg, msg.getDestinationDeviceId());

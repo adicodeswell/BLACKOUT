@@ -302,4 +302,79 @@ describe('PeopleService', () => {
       expect(search.data[0].name).toBe('Alice');
     }
   });
+
+  test('sendDirectMessage resolves canonical UUID when peer was discovered by MAC address', async () => {
+    // 1. Peer discovered via Wi-Fi Direct with MAC address
+    networkListeners.forEach((l) =>
+      l({
+        type: 'PEER_DISCOVERED',
+        peer: {
+          peer_id: '4A:5E:3B:11:22:33',
+          transport_address: '4A:5E:3B:11:22:33',
+          connection_state: 'DISCOVERED',
+          transport: 'WIFI_DIRECT',
+          last_seen_at: Date.now(),
+          capabilities: [],
+        },
+      })
+    );
+
+    // 2. Handshake completes and emits PEER_CONNECTED with canonical UUID and transport_address
+    networkListeners.forEach((l) =>
+      l({
+        type: 'PEER_CONNECTED',
+        peer_id: 'canonical-uuid-1234',
+        transport_address: '4A:5E:3B:11:22:33',
+        peer: {
+          peer_id: 'canonical-uuid-1234',
+          transport_address: '4A:5E:3B:11:22:33',
+          connection_state: 'CONNECTED',
+          transport: 'WIFI_DIRECT',
+          last_seen_at: Date.now(),
+          capabilities: [],
+        },
+      } as any)
+    );
+
+    // 3. User sends a message to the discovered MAC address
+    const sendRes = await service.sendDirectMessage('4A:5E:3B:11:22:33', 'Hello via resolved UUID');
+    expect(sendRes.ok).toBe(true);
+
+    // 4. Verify message sent to network engine has destination resolved to canonical UUID
+    expect(mockNetworkEngine.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destination_device_id: 'canonical-uuid-1234',
+        payload: { text: 'Hello via resolved UUID' },
+      })
+    );
+  });
+
+  test('PEER_CONNECTED migrates existing conversation drafted under MAC address to canonical UUID', async () => {
+    // 1. User drafts/sends a message while peer was only known by MAC address
+    await service.sendDirectMessage('4A:5E:3B:11:22:33', 'Drafted before handshake');
+    expect(service.getConversation('4A:5E:3B:11:22:33')).toHaveLength(1);
+
+    // 2. PEER_CONNECTED arrives with canonical UUID and transport_address
+    networkListeners.forEach((l) =>
+      l({
+        type: 'PEER_CONNECTED',
+        peer_id: 'canonical-uuid-5678',
+        transport_address: '4A:5E:3B:11:22:33',
+        peer: {
+          peer_id: 'canonical-uuid-5678',
+          transport_address: '4A:5E:3B:11:22:33',
+          connection_state: 'CONNECTED',
+          transport: 'WIFI_DIRECT',
+          last_seen_at: Date.now(),
+          capabilities: [],
+        },
+      } as any)
+    );
+
+    // 3. Verify conversation was migrated to canonical UUID and old MAC conversation deleted
+    expect(service.getConversation('4A:5E:3B:11:22:33')).toHaveLength(0);
+    const canonicalConvo = service.getConversation('canonical-uuid-5678');
+    expect(canonicalConvo).toHaveLength(1);
+    expect(canonicalConvo[0].destination_device_id).toBe('canonical-uuid-5678');
+  });
 });

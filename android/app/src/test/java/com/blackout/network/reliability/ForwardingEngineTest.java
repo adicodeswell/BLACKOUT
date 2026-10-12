@@ -79,6 +79,25 @@ public class ForwardingEngineTest {
                 
         assertFalse("Should NOT forward message meant for us", engine.shouldForward(msg));
     }
+
+    @Test
+    public void testShouldNotForwardMessageDestinedForSelf_ViaHardwareMacAlias() {
+        // Local device has UUID "device-B", but hardware Wi-Fi Direct address "4A:5E:3B:11:22:33"
+        engine.addLocalAlias("4A:5E:3B:11:22:33");
+
+        NetworkMessage msg = new NetworkMessage.Builder()
+                .messageId("msg-mac-1")
+                .originDeviceId("device-A")
+                .destinationDeviceId("4a:5e:3b:11:22:33") // Addressed to our hardware MAC address (lowercase)
+                .messageType(MessageType.DIRECT)
+                .ttl(5)
+                .hopCount(1)
+                .payloadHash("hash")
+                .payload("{\"text\":\"hello\"}")
+                .build();
+
+        assertFalse("Should NOT forward message destined for our hardware MAC alias (it is for local delivery)", engine.shouldForward(msg));
+    }
     
     @Test
     public void testShouldNotForwardOwnMessage() {
